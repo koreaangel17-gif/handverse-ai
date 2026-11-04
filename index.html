@@ -1299,5 +1299,22 @@ barEl.insertBefore(modelBtn, barEl.firstChild);
   };
 })();
   </script>
+  <button id="delModels" style="position:fixed;bottom:12px;left:12px;z-index:9999;padding:10px 14px;border:0;border-radius:10px;background:#e53935;color:#fff;font-size:14px">🗑 Delete my phone models</button>
+<script>
+document.getElementById('delModels').onclick = async () => {
+  if (!confirm('Delete all models saved on this phone? Shared models will stay.')) return;
+  try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+  try {
+    const dbs = await indexedDB.databases();
+    dbs.forEach(d => indexedDB.deleteDatabase(d.name));
+  } catch (e) {}
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+  } catch (e) {}
+  alert('Done. Reloading...');
+  location.reload();
+};
+</script>
 </body>
 </html>
