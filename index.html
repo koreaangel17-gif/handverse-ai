@@ -518,5 +518,275 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 </script>
+<script>
+// ===== HANDVERSE EXTRA SHAPES =====
+function rr(a, b) { return a + Math.random() * (b - a); }
+
+function build(parts) {
+  const out = new Float32Array(COUNT * 3);
+  let total = 0;
+  parts.forEach(p => total += p[0]);
+  let i = 0;
+  parts.forEach((p, pi) => {
+    const n = (pi === parts.length - 1) ? COUNT - i : Math.floor(COUNT * p[0] / total);
+    for (let k = 0; k < n && i < COUNT; k++, i++) {
+      const v = p[1]();
+      out[i*3] = v[0]; out[i*3+1] = v[1]; out[i*3+2] = v[2];
+    }
+  });
+  return out;
+}
+function tri(A, B, C, j) {
+  let a = Math.random(), b = Math.random();
+  if (a + b > 1) { a = 1 - a; b = 1 - b; }
+  j = j || 0.03;
+  return [
+    A[0] + a*(B[0]-A[0]) + b*(C[0]-A[0]) + rr(-j, j),
+    A[1] + a*(B[1]-A[1]) + b*(C[1]-A[1]) + rr(-j, j),
+    A[2] + a*(B[2]-A[2]) + b*(C[2]-A[2]) + rr(-j, j)
+  ];
+}
+function triSet(list, j) {
+  return () => { const t = list[Math.floor(Math.random() * list.length)]; return tri(t[0], t[1], t[2], j); };
+}
+function mirror(list, ax) {
+  return list.concat(list.map(t => t.map(p => { const q = p.slice(); q[ax] = -q[ax]; return q; })));
+}
+function line(A, B, j) {
+  const t = Math.random(); j = j || 0.05;
+  return [A[0]+t*(B[0]-A[0])+rr(-j,j), A[1]+t*(B[1]-A[1])+rr(-j,j), A[2]+t*(B[2]-A[2])+rr(-j,j)];
+}
+function ball(cx, cy, cz, r) {
+  const u = rr(-1, 1), t = rr(0, 6.2832), s = Math.sqrt(1 - u*u);
+  return [cx + r*s*Math.cos(t), cy + r*u, cz + r*s*Math.sin(t)];
+}
+function ellip(cx, cy, cz, a, b, c) {
+  const p = ball(0, 0, 0, 1);
+  return [cx + p[0]*a, cy + p[1]*b, cz + p[2]*c];
+}
+function box(cx, cy, cz, sx, sy, sz) {
+  const ax = sy*sz, ay = sx*sz, az = sx*sy, t = Math.random() * (ax + ay + az);
+  const p = [rr(-sx, sx), rr(-sy, sy), rr(-sz, sz)];
+  const s = Math.random() < 0.5 ? -1 : 1;
+  if (t < ax) p[0] = s * sx; else if (t < ax + ay) p[1] = s * sy; else p[2] = s * sz;
+  return [cx + p[0], cy + p[1], cz + p[2]];
+}
+function wheel(cx, cy, cz, Rr, r) {
+  const u = rr(0, 6.2832), v = rr(0, 6.2832);
+  return [cx + (Rr + r*Math.cos(v))*Math.cos(u), cy + (Rr + r*Math.cos(v))*Math.sin(u), cz + r*Math.sin(v)];
+}
+function rotY(p, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [p[0]*c + p[2]*s, p[1], -p[0]*s + p[2]*c];
+}
+function sgn() { return Math.random() < 0.5 ? -1 : 1; }
+
+const extraShapes = {
+  circle() {
+    return build([
+      [4, () => { const u = rr(0, 6.2832), v = rr(0, 6.2832), Rr = 2.4, r = 0.14;
+        return [(Rr + r*Math.cos(v))*Math.cos(u), (Rr + r*Math.cos(v))*Math.sin(u), r*Math.sin(v)]; }],
+      [1, () => { const a = rr(0, 6.2832), d = 2.3 * Math.sqrt(Math.random());
+        return [d*Math.cos(a), d*Math.sin(a), rr(-0.03, 0.03)]; }]
+    ]);
+  },
+  triangle() {
+    const A = [1.9,1.9,1.9], B = [1.9,-1.9,-1.9], C = [-1.9,1.9,-1.9], D = [-1.9,-1.9,1.9];
+    return build([[1, triSet([[A,B,C],[A,B,D],[A,C,D],[B,C,D]], 0.03)]]);
+  },
+  diamond() {
+    const T = [], G = [], list = [];
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      T.push([1.3*Math.cos(a), 1.3, 1.3*Math.sin(a)]);
+      G.push([2.3*Math.cos(a), 0.5, 2.3*Math.sin(a)]);
+    }
+    for (let i = 0; i < 8; i++) {
+      const j = (i + 1) % 8;
+      list.push([[0,1.3,0], T[i], T[j]]);
+      list.push([T[i], G[i], G[j]]);
+      list.push([T[i], T[j], G[j]]);
+      list.push([G[i], G[j], [0,-2.4,0]]);
+    }
+    return build([[1, triSet(list, 0.03)]]);
+  },
+  star() {
+    const V = [], list = [];
+    for (let i = 0; i < 10; i++) {
+      const a = Math.PI/2 + i * Math.PI/5, r = (i % 2) ? 1.0 : 2.5;
+      V.push([r*Math.cos(a), r*Math.sin(a), 0]);
+    }
+    for (let i = 0; i < 10; i++) list.push([[0,0,0], V[i], V[(i+1) % 10]]);
+    return build([[1, () => {
+      const t = list[Math.floor(Math.random() * list.length)];
+      const p = tri(t[0], t[1], t[2], 0.02); p[2] = rr(-0.3, 0.3); return p;
+    }]]);
+  },
+  house() {
+    const roof = mirror([
+      [[-1.8,0.4,1.5],[0,1.9,1.5],[0,1.9,-1.5]],
+      [[-1.8,0.4,1.5],[0,1.9,-1.5],[-1.8,0.4,-1.5]]
+    ], 0);
+    const gable = [[[-1.8,0.4,1.5],[1.8,0.4,1.5],[0,1.9,1.5]], [[-1.8,0.4,-1.5],[1.8,0.4,-1.5],[0,1.9,-1.5]]];
+    return build([
+      [4, () => box(0, -0.6, 0, 1.6, 1.0, 1.4)],
+      [3, triSet(roof, 0.03)],
+      [1, triSet(gable, 0.03)],
+      [1, () => box(0, -1.2, 1.45, 0.4, 0.8, 0.03)]
+    ]);
+  },
+  phone() {
+    return build([
+      [4, () => box(0, 0, 0, 1.0, 2.0, 0.1)],
+      [3, () => [rr(-0.88, 0.88), rr(-1.8, 1.7), 0.11]],
+      [0.3, () => ball(0, 1.82, 0.12, 0.08)]
+    ]);
+  },
+  airplane() {
+    const wings = mirror([
+      [[0.6,0,0.3],[-0.8,0,0.3],[-1.6,0.15,2.7]],
+      [[0.6,0,0.3],[-1.6,0.15,2.7],[-0.9,0.15,2.7]]
+    ], 2);
+    const tailW = mirror([
+      [[-1.8,0.05,0.2],[-2.5,0.05,0.2],[-2.7,0.05,1.0]],
+      [[-1.8,0.05,0.2],[-2.7,0.05,1.0],[-2.3,0.05,1.0]]
+    ], 2);
+    const fin = [[[-1.6,0.3,0],[-2.5,0.3,0],[-2.6,1.2,0]], [[-1.6,0.3,0],[-2.6,1.2,0],[-2.3,1.2,0]]];
+    return build([
+      [3, () => { const x = rr(-2.6, 2.6), r = 0.4*Math.sqrt(Math.max(0, 1 - Math.pow(x/2.6, 2))), a = rr(0, 6.2832);
+        return [x, r*Math.cos(a), r*Math.sin(a)]; }],
+      [4, triSet(wings, 0.03)],
+      [1, triSet(tailW, 0.03)],
+      [0.7, triSet(fin, 0.03)]
+    ]);
+  },
+  rocket() {
+    const fin = [[0.6,-0.2,0],[0.6,-1.7,0],[1.5,-2.1,0]];
+    return build([
+      [4, () => { const y = rr(-1.6, 1.2), a = rr(0, 6.2832); return [0.6*Math.cos(a), y, 0.6*Math.sin(a)]; }],
+      [3, () => { const y = rr(1.2, 2.7), r = 0.6*(2.7 - y)/1.5, a = rr(0, 6.2832); return [r*Math.cos(a), y, r*Math.sin(a)]; }],
+      [2, () => rotY(tri(fin[0], fin[1], fin[2], 0.03), Math.floor(Math.random()*3) * 2.0944)],
+      [0.5, () => { const a = rr(0, 6.2832); return [0.28*Math.cos(a), 0.4 + 0.28*Math.sin(a), 0.62]; }],
+      [1.5, () => { const y = rr(-3.4, -1.6), r = 0.4*(y + 3.4)/1.8*Math.sqrt(Math.random()), a = rr(0, 6.2832);
+        return [r*Math.cos(a), y, r*Math.sin(a)]; }]
+    ]);
+  },
+  car() {
+    return build([
+      [4, () => box(0, -0.1, 0, 2.3, 0.4, 0.95)],
+      [2, () => box(-0.2, 0.7, 0, 1.1, 0.4, 0.85)],
+      [3, () => wheel(sgn()*1.4, -0.5, sgn()*1.0, 0.4, 0.15)],
+      [0.3, () => ball(2.3, 0, sgn()*0.6, 0.12)]
+    ]);
+  },
+  bike() {
+    const R_ = [-1.4,-0.8,0], B = [-0.1,-0.8,0], S = [-0.6,0.5,0], H = [0.8,0.5,0], F = [1.4,-0.8,0];
+    const lines = [[R_,B],[R_,S],[B,S],[S,H],[B,H],[H,F],[[0.7,0.9,-0.5],[0.7,0.9,0.5]],[H,[0.7,0.9,0]],[S,[-0.65,0.75,0]]];
+    return build([
+      [3, () => wheel(sgn()*1.4, -0.8, 0, 0.8, 0.05)],
+      [1, () => { const a = rr(0, 6.2832), t = Math.random(); return [sgn()*1.4 + t*0.8*Math.cos(a), -0.8 + t*0.8*Math.sin(a), 0]; }],
+      [3, () => { const l = lines[Math.floor(Math.random()*lines.length)]; return line(l[0], l[1], 0.04); }]
+    ]);
+  },
+  butterfly() {
+    return build([
+      [8, () => {
+        const t = rr(0, Math.PI), r = Math.exp(Math.sin(t)) - 2*Math.cos(4*t);
+        const u = Math.sqrt(Math.random()), k = 0.65 * u;
+        const x = Math.abs(Math.sin(t) * r) * k, y = Math.cos(t) * r * k;
+        return [sgn() * x, y, x * 0.12 + rr(-0.04, 0.04)];
+      }],
+      [1, () => line([0,-1.4,0], [0,1.5,0], 0.07)]
+    ]);
+  },
+  eagle() {
+    const A = [0.4,0.8,0], B = [0.4,-0.7,0], C = [3.6,1.3,0.2], D = [3.4,-0.3,0.2], E = [2.6,-0.9,0.2];
+    const wings = mirror([[A,B,D],[A,D,C],[B,D,E]], 0);
+    return build([
+      [3, () => ellip(0, 0, 0, 0.5, 1.2, 0.4)],
+      [0.8, () => ball(0, 1.5, 0.1, 0.32)],
+      [0.3, () => { const t = Math.random(), r = 0.12*(1 - t), a = rr(0, 6.2832);
+        return [r*Math.cos(a), 1.45 + r*Math.sin(a) - 0.15*t, 0.3 + 0.4*t]; }],
+      [1, triSet([[[0,-1,0],[-0.6,-2.4,0],[0.6,-2.4,0]]], 0.04)],
+      [6, triSet(wings, 0.04)]
+    ]);
+  },
+  fish() {
+    return build([
+      [5, () => ellip(0, 0, 0, 1.9, 0.8, 0.4)],
+      [1.5, triSet([[[-1.7,0,0],[-2.9,1.0,0],[-2.9,-1.0,0]]], 0.03)],
+      [1, triSet([[[0.5,0.7,0],[-0.6,0.7,0],[-0.2,1.5,0]]], 0.03)],
+      [0.3, () => ball(1.3, 0.2, 0.35, 0.1)]
+    ]);
+  },
+  satellite() {
+    return build([
+      [3, () => box(0, 0, 0, 0.6, 0.6, 0.6)],
+      [4, () => box(sgn()*2.2, 0, 0, 1.2, 0.7, 0.04)],
+      [0.6, () => { const s = sgn(); return line([0.6*s,0,0], [1.0*s,0,0], 0.03); }],
+      [0.8, () => { const a = rr(0, 6.2832), r = 0.5*Math.sqrt(Math.random());
+        return [r*Math.cos(a), 0.95 + r*r*0.8, r*Math.sin(a)]; }],
+      [0.3, () => line([0,0.6,0], [0,0.95,0], 0.03)]
+    ]);
+  },
+  saturn() {
+    const c = Math.cos(0.45), s = Math.sin(0.45);
+    return build([
+      [2.5, () => ball(0, 0, 0, 1.3)],
+      [4, () => { const r = rr(1.9, 3.1), a = rr(0, 6.2832), x = r*Math.cos(a), y = rr(-0.02, 0.02), z = r*Math.sin(a);
+        return [x*c - y*s, x*s + y*c, z]; }]
+    ]);
+  },
+  comet() {
+    return build([
+      [2, () => ball(2.2, 0, 0, 0.6)],
+      [5, () => { const t = Math.pow(Math.random(), 1.3), r = (0.1 + 0.9*t) * Math.sqrt(Math.random()), a = rr(0, 6.2832);
+        return [2.2 - t*5.5, r*Math.cos(a), r*Math.sin(a)]; }]
+    ]);
+  },
+  asteroid() {
+    return build([[1, () => {
+      const p = ball(0, 0, 0, 1);
+      const b = 1 + 0.22*Math.sin(3*p[0] + 1)*Math.cos(4*p[1]) + 0.14*Math.sin(5*p[2] + 2) + 0.08*Math.sin(9*p[0]*p[1]);
+      return [p[0]*2.1*b, p[1]*1.5*b, p[2]*1.8*b];
+    }]]);
+  }
+};
+
+Object.assign(shapes, extraShapes);
+Object.keys(extraShapes).forEach(k => shapeNames.push(k));
+
+const LABELS = {
+  sphere:'⚪ Sphere', cube:'🧊 Cube', pyramid:'🔺 Pyramid', heart:'❤️ Heart', torus:'🍩 Torus', spiral:'🌀 Galaxy',
+  circle:'⭕ Circle', triangle:'△ Triangle', diamond:'💎 Diamond', star:'⭐ Star',
+  house:'🏠 House', phone:'📱 Phone',
+  airplane:'✈️ Airplane', rocket:'🚀 Rocket', car:'🚗 Car', bike:'🚲 Bike',
+  butterfly:'🦋 Butterfly', eagle:'🦅 Eagle', fish:'🐟 Fish',
+  satellite:'🛰️ Satellite', saturn:'🪐 Saturn', comet:'☄️ Comet', asteroid:'🪨 Asteroid'
+};
+
+// ----- rebuild the bottom bar as a scrolling row -----
+const barEl = document.getElementById('bar');
+barEl.innerHTML = '';
+Object.assign(barEl.style, { flexWrap: 'nowrap', overflowX: 'auto', justifyContent: 'flex-start', paddingBottom: '6px' });
+function mkBtn(text) {
+  const b = document.createElement('button');
+  b.className = 'btn'; b.textContent = text;
+  b.style.flex = '0 0 auto'; b.style.whiteSpace = 'nowrap';
+  barEl.appendChild(b);
+  return b;
+}
+shapeNames.forEach(n => {
+  const b = mkBtn(LABELS[n] || n);
+  b.dataset.shape = n;
+  b.addEventListener('click', () => setShape(n));
+});
+mkBtn('💥 Explode').addEventListener('click', () => { explode = 1; });
+mkBtn('🎯 Reset view').addEventListener('click', () => { camera.position.z = 7; });
+
+document.getElementById('handRow').style.bottom = '80px';
+document.getElementById('hint').textContent = 'Swipe your hand or scroll the buttons below ➜';
+setShape(shapeNames[currentShape]);
+</script>
 </body>
 </html>
