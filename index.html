@@ -1338,5 +1338,40 @@ document.getElementById('delModels').onclick = async () => {
   document.body.appendChild(c);
 })();
   </script>
+<script>
+(function () {
+  // 1. Keep removing the red "Delete my phone models" buttons
+  function killRed() {
+    document.querySelectorAll('button').forEach(function (b) {
+      if ((b.textContent || '').indexOf('Delete my phone models') > -1) b.remove();
+    });
+  }
+  killRed();
+  new MutationObserver(killRed).observe(document.body, { childList: true, subtree: true });
+
+  // 2. Remove any old credit lines
+  ['credit', 'credit2', 'credit3'].forEach(function (id) {
+    var o = document.getElementById(id);
+    if (o) o.remove();
+  });
+
+  // 3. Add one credit line under the "Swipe your hand..." text
+  var c = document.createElement('div');
+  c.id = 'credit3';
+  c.textContent = 'Made by Nessan dhimal';
+  c.style.cssText = 'text-align:center;font:600 12px sans-serif;letter-spacing:1px;color:#fff;text-shadow:0 0 3px #000;margin:2px 0 4px;pointer-events:none';
+
+  var target = null;
+  document.querySelectorAll('div,p,span,small').forEach(function (el) {
+    if (!target && el.children.length === 0 && (el.textContent || '').indexOf('Swipe your hand') === 0) target = el;
+  });
+  if (target && target.parentNode) {
+    target.parentNode.insertBefore(c, target.nextSibling);
+  } else {
+    c.style.cssText += ';position:fixed;bottom:4px;left:0;right:0;z-index:99999';
+    document.body.appendChild(c);
+  }
+})();
+</script>
 </body>
 </html>
