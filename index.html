@@ -1251,5 +1251,53 @@ barEl.insertBefore(modelBtn, barEl.firstChild);
   };
 })();
   </script>
+  <script>
+// ===== HANDVERSE: HAND SWIPE SWITCHES BETWEEN YOUR MODELS =====
+(function () {
+  const isModel = b => { const t = b.textContent.trim(); return t.startsWith('🌍') || t.startsWith('⭐'); };
+  const isShape = b => !!b.dataset.shape;
+  let cur = null, lastX = null, lastT = 0, lastSwipe = 0, block = false;
+
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b && (isModel(b) || isShape(b))) cur = b;
+  });
+
+  // stop the old swipe from jumping to built-in shapes
+  const origSet = setShape;
+  setShape = function (n) { if (block) return; return origSet(n); };
+
+  const origHands = onHands;
+  onHands = function (results) {
+    block = true;
+    try { origHands(results); } finally { block = false; }
+
+    if (!results.multiHandLandmarks || !results.multiHandLandmarks.length) { lastX = null; return; }
+    const lm = results.multiHandLandmarks[0];
+    const now = performance.now();
+    const px = 1 - lm[9].x;
+    const open = fingerStates(lm).filter(Boolean).length >= 3;
+
+    if (lastX !== null) {
+      const dt = (now - lastT) / 1000;
+      const vx = (px - lastX) / dt;
+      if (open && dt < 0.4 && Math.abs(vx) > 1.1 && now - lastSwipe > 900) {
+        const all = Array.from(barEl.querySelectorAll('button'));
+        const models = all.filter(isModel), shapesB = all.filter(isShape);
+        const list = (cur && isModel(cur) && models.length > 1) ? models : (models.length && !cur ? models : shapesB);
+        let i = list.indexOf(cur);
+        if (i < 0) i = 0;
+        const dir = vx > 0 ? 1 : -1;
+        const next = list[(i + dir + list.length) % list.length];
+        lastSwipe = now;
+        next.click();
+        next.scrollIntoView({ inline: 'center', block: 'nearest' });
+        statusEl.textContent = '👉 ' + next.textContent.trim();
+      }
+    }
+    lastX = px; lastT = now;
+  };
+})();
+  </script>
 </body>
 </html>
