@@ -1338,5 +1338,15 @@ document.querySelectorAll('button').forEach(b => {
   if (b.textContent.includes('Delete my phone models')) b.remove();
 });
   </script>
+  <script>
+function removeRedButtons() {
+  document.querySelectorAll('button').forEach(b => {
+    if (b.textContent.includes('Delete my phone models')) b.remove();
+  });
+}
+removeRedButtons();
+window.addEventListener('load', removeRedButtons);
+setTimeout(removeRedButtons, 500);
+  </script>
 </body>
 </html>
