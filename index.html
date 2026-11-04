@@ -1333,21 +1333,13 @@ document.getElementById('delModels').onclick = async () => {
   location.reload();
 };
 </script>
-  <script>
-document.querySelectorAll('button').forEach(b => {
-  if (b.textContent.includes('Delete my phone models')) b.remove();
-});
-  </script>
-  <script>
-function removeRedButtons() {
-  document.querySelectorAll('button').forEach(b => {
-    if (b.textContent.includes('Delete my phone models')) b.remove();
-  });
-}
-removeRedButtons();
-window.addEventListener('load', removeRedButtons);
-setTimeout(removeRedButtons, 500);
-  </script>
-  <div id="credit" style="position:fixed;top:4px;left:0;right:0;text-align:center;z-index:99999;pointer-events:none;font-family:sans-serif;font-size:13px;font-weight:600;letter-spacing:1px;color:#ffffff;text-shadow:0 0 4px rgba(0,0,0,.9)">Made by Nessan dhimal</div>
+<script>
+(function () {
+  var c = document.createElement('div');
+  c.textContent = 'Made by Nessan dhimal';
+  c.style.cssText = 'position:fixed;top:4px;left:0;right:0;text-align:center;z-index:2147483647;pointer-events:none;font:600 13px sans-serif;letter-spacing:1px;color:#fff;text-shadow:0 0 4px #000';
+  document.body.appendChild(c);
+})();
+</script>  
 </body>
 </html>
