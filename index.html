@@ -1333,5 +1333,10 @@ document.getElementById('delModels').onclick = async () => {
   location.reload();
 };
 </script>
+  <script>
+document.querySelectorAll('button').forEach(b => {
+  if (b.textContent.includes('Delete my phone models')) b.remove();
+});
+  </script>
 </body>
 </html>
