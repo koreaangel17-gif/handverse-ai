@@ -14,17 +14,35 @@
   canvas { display: block; touch-action: none; }
 
   #title {
-    position: fixed; top: 12px; left: 0; right: 0;
+    position: fixed; top: 10px; left: 0; right: 0;
     text-align: center; color: #3db8ff;
     font-size: 20px; letter-spacing: 6px; font-weight: bold;
-    text-shadow: 0 0 12px #0099ff;
-    pointer-events: none;
+    text-shadow: 0 0 12px #0099ff; pointer-events: none;
   }
   #hint {
-    position: fixed; top: 42px; left: 0; right: 0;
-    text-align: center; color: #5a8fb8; font-size: 12px;
-    pointer-events: none;
+    position: fixed; top: 38px; left: 0; right: 0;
+    text-align: center; color: #5a8fb8; font-size: 12px; pointer-events: none;
   }
+  #colorPanel {
+    position: fixed; top: 60px; left: 8px; right: 8px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+    align-items: center;
+  }
+  .swatch {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.4);
+    box-shadow: 0 0 8px currentColor;
+  }
+  .swatch.active { border-color: #fff; transform: scale(1.2); }
+  #picker { width: 34px; height: 34px; border: none; padding: 0; background: none; }
+  #sliders {
+    position: fixed; top: 150px; left: 16px; right: 16px;
+    display: flex; gap: 16px; justify-content: center;
+    color: #8fd3ff; font-size: 12px;
+  }
+  #sliders label { display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 160px; }
+  #sliders input { width: 100%; }
+
   #bar {
     position: fixed; bottom: 14px; left: 8px; right: 8px;
     display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
@@ -35,31 +53,25 @@
     padding: 10px 14px; border-radius: 20px;
     font-size: 14px; box-shadow: 0 0 8px rgba(30,144,255,0.5);
   }
-  #colorPanel {
-    position: fixed; top: 70px; left: 8px; right: 8px;
-    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
-    align-items: center;
+  .btn.active { background: #1e90ff; color: #00112b; box-shadow: 0 0 16px #1e90ff; }
+
+  #handBtn { font-size: 16px; padding: 12px 18px; }
+  #handRow {
+    position: fixed; bottom: 140px; left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    pointer-events: none;
   }
-  .swatch {
-    width: 30px; height: 30px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.4);
-    box-shadow: 0 0 8px currentColor;
+  #handRow button { pointer-events: auto; }
+  #status {
+    color: #8fd3ff; font-size: 13px; text-align: center;
+    text-shadow: 0 0 6px #000; padding: 0 10px;
   }
-  .swatch.active { border-color: #fff; transform: scale(1.2); }
-  #picker {
-    width: 34px; height: 34px; border: none; padding: 0;
-    background: none; border-radius: 50%;
-  }
-  #sliders {
-    position: fixed; top: 112px; left: 16px; right: 16px;
-    display: flex; gap: 16px; justify-content: center;
-    color: #8fd3ff; font-size: 12px;
-  }
-  #sliders label { display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 160px; }
-  #sliders input { width: 100%; }
-  .btn.active {
-    background: #1e90ff; color: #00112b;
-    box-shadow: 0 0 16px #1e90ff;
+  #cam {
+    position: fixed; top: 190px; right: 8px;
+    width: 96px; height: 72px; border-radius: 10px;
+    border: 1px solid #1e90ff; opacity: 0.75;
+    transform: scaleX(-1); object-fit: cover; display: none;
+    pointer-events: none;
   }
 </style>
 </head>
@@ -84,6 +96,14 @@
   <label>Brightness<input type="range" id="bright" min="0.3" max="1.5" step="0.05" value="1"></label>
   <label>Glow size<input type="range" id="glow" min="0.04" max="0.3" step="0.01" value="0.09"></label>
 </div>
+
+<video id="cam" playsinline muted></video>
+
+<div id="handRow">
+  <div id="status"></div>
+  <button class="btn" id="handBtn">✋ Start Hand Control</button>
+</div>
+
 <div id="bar">
   <button class="btn active" data-shape="sphere">Sphere</button>
   <button class="btn" data-shape="cube">Cube</button>
@@ -95,12 +115,11 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
 <script>
 // ---------- BASIC SETUP ----------
-const COUNT = 12000;               // number of particles
+const COUNT = 12000;
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x000510, 0.03);
-
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.z = 7;
 
@@ -110,7 +129,6 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000510);
 document.body.appendChild(renderer.domElement);
 
-// ---------- GLOWING PARTICLE TEXTURE ----------
 function makeGlowTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
@@ -127,14 +145,12 @@ function makeGlowTexture() {
 // ---------- PARTICLES ----------
 const positions = new Float32Array(COUNT * 3);
 const targets   = new Float32Array(COUNT * 3);
-const dirs      = new Float32Array(COUNT * 3);   // random directions for explosion
+const dirs      = new Float32Array(COUNT * 3);
 
 for (let i = 0; i < COUNT; i++) {
-  // start as a random cloud
   positions[i*3]   = (Math.random() - 0.5) * 20;
   positions[i*3+1] = (Math.random() - 0.5) * 20;
   positions[i*3+2] = (Math.random() - 0.5) * 20;
-  // random unit direction
   const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2;
   const s = Math.sqrt(1 - u*u);
   dirs[i*3] = s * Math.cos(t); dirs[i*3+1] = u; dirs[i*3+2] = s * Math.sin(t);
@@ -144,15 +160,10 @@ const geometry = new THREE.BufferGeometry();
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
 const material = new THREE.PointsMaterial({
-  size: 0.09,
-  map: makeGlowTexture(),
-  color: 0x1e90ff,               // electric blue
-  transparent: true,
-  depthWrite: false,
-  blending: THREE.AdditiveBlending,
-  sizeAttenuation: true
+  size: 0.09, map: makeGlowTexture(), color: 0x1e90ff,
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending, sizeAttenuation: true
 });
-
 const points = new THREE.Points(geometry, material);
 scene.add(points);
 
@@ -160,7 +171,6 @@ scene.add(points);
 function rnd(a, b) { return a + Math.random() * (b - a); }
 
 function sampleTriangles(tris) {
-  // tris = array of [A, B, C], each a point [x,y,z]
   const out = new Float32Array(COUNT * 3);
   for (let i = 0; i < COUNT; i++) {
     const tri = tris[Math.floor(Math.random() * tris.length)];
@@ -206,7 +216,7 @@ const shapes = {
     const out = new Float32Array(COUNT * 3);
     for (let i = 0; i < COUNT; i++) {
       const t = Math.random() * Math.PI * 2;
-      const k = 0.75 + 0.25 * Math.random();      // thickness of the shell
+      const k = 0.75 + 0.25 * Math.random();
       const x = 16 * Math.pow(Math.sin(t), 3);
       const y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
       const sc = 0.14 * k;
@@ -242,23 +252,26 @@ const shapes = {
   }
 };
 
+const shapeNames = ['sphere', 'cube', 'pyramid', 'heart', 'torus', 'spiral'];
+let currentShape = 0;
+
 function setShape(name) {
   targets.set(shapes[name]());
+  currentShape = shapeNames.indexOf(name);
+  document.querySelectorAll('[data-shape]').forEach(b => {
+    b.classList.toggle('active', b.dataset.shape === name);
+  });
 }
 setShape('sphere');
 
 // ---------- BUTTONS ----------
 let explode = 0;
 document.querySelectorAll('[data-shape]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-shape]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    setShape(btn.dataset.shape);
-  });
+  btn.addEventListener('click', () => setShape(btn.dataset.shape));
 });
 document.getElementById('explodeBtn').addEventListener('click', () => { explode = 1; });
 
-// ---------- TOUCH: DRAG TO ROTATE, PINCH TO ZOOM ----------
+// ---------- TOUCH ----------
 const pointers = new Map();
 let lastPinch = 0, dragging = false;
 const canvas = renderer.domElement;
@@ -273,7 +286,6 @@ canvas.addEventListener('pointermove', e => {
   const prev = pointers.get(e.pointerId);
   const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
   if (pointers.size === 1) {
     points.rotation.y += dx * 0.008;
     points.rotation.x += dy * 0.008;
@@ -290,7 +302,6 @@ function endPointer(e) {
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-
 function pinchDistance() {
   const p = Array.from(pointers.values());
   return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
@@ -304,31 +315,27 @@ let brightness = 1;
 function applyColor() {
   material.color.copy(baseColor).multiplyScalar(brightness);
 }
+function setRainbow(on) {
+  rainbow = on;
+  document.getElementById('rainbowBtn').classList.toggle('active', on);
+}
 
 document.querySelectorAll('.swatch').forEach(s => {
   s.addEventListener('click', () => {
     document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
     s.classList.add('active');
-    rainbow = false;
-    document.getElementById('rainbowBtn').classList.remove('active');
+    setRainbow(false);
     baseColor.set(s.dataset.color);
     applyColor();
   });
 });
-
 document.getElementById('picker').addEventListener('input', e => {
   document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
-  rainbow = false;
-  document.getElementById('rainbowBtn').classList.remove('active');
+  setRainbow(false);
   baseColor.set(e.target.value);
   applyColor();
 });
-
-document.getElementById('rainbowBtn').addEventListener('click', e => {
-  rainbow = !rainbow;
-  e.target.classList.toggle('active', rainbow);
-});
-
+document.getElementById('rainbowBtn').addEventListener('click', () => setRainbow(!rainbow));
 document.getElementById('bright').addEventListener('input', e => {
   brightness = parseFloat(e.target.value);
   applyColor();
@@ -336,20 +343,153 @@ document.getElementById('bright').addEventListener('input', e => {
 document.getElementById('glow').addEventListener('input', e => {
   material.size = parseFloat(e.target.value);
 });
+
+// ---------- HAND CONTROL ----------
+const statusEl = document.getElementById('status');
+const videoEl = document.getElementById('cam');
+const handBtn = document.getElementById('handBtn');
+
+let handActive = false;      // is a hand currently visible
+let handCtrl = {
+  scale: 1, scaleTarget: 1,   // gather / spread size
+  open: 0, openTarget: 0,     // extra spread
+  rotX: 0, rotY: 0            // target rotation
+};
+let lastPalmX = null, lastPalmY = null, lastTime = 0;
+let lastSwipe = 0, lastPeace = 0;
+let lastSeen = 0;
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function fingerStates(lm) {
+  const wrist = lm[0];
+  const tips = [8, 12, 16, 20], pips = [6, 10, 14, 18];
+  return tips.map((t, i) => dist(lm[t], wrist) > dist(lm[pips[i]], wrist) * 1.05);
+}
+
+function onHands(results) {
+  const now = performance.now();
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    if (now - lastSeen > 400) {
+      handActive = false;
+      handCtrl.scaleTarget = 1; handCtrl.openTarget = 0;
+      lastPalmX = null;
+      statusEl.textContent = '👋 Show your hand to the camera';
+    }
+    return;
+  }
+  lastSeen = now;
+  handActive = true;
+
+  const lm = results.multiHandLandmarks[0];
+  const palm = dist(lm[0], lm[9]) || 0.1;
+  const ext = fingerStates(lm);
+  const extCount = ext.filter(Boolean).length;
+  const pinchRatio = dist(lm[4], lm[8]) / palm;
+
+  // Palm centre, mirrored so it matches what you see
+  const px = 1 - lm[9].x, py = lm[9].y;
+
+  let gesture = '';
+  if (pinchRatio < 0.3) {
+    gesture = '🤏 Pinch: move hand up/down to zoom';
+    if (lastPalmY !== null) {
+      camera.position.z += (py - lastPalmY) * 14;
+      camera.position.z = Math.max(2.5, Math.min(16, camera.position.z));
+    }
+    handCtrl.scaleTarget = 1; handCtrl.openTarget = 0;
+  } else if (ext[0] && ext[1] && !ext[2] && !ext[3]) {
+    gesture = '✌️ Peace: rainbow toggle';
+    if (now - lastPeace > 1500) { setRainbow(!rainbow); lastPeace = now; }
+  } else if (extCount >= 4) {
+    gesture = '🖐 Open palm: spread';
+    handCtrl.scaleTarget = 1.5; handCtrl.openTarget = 1;
+  } else if (extCount <= 1) {
+    gesture = '✊ Fist: gather';
+    handCtrl.scaleTarget = 0.35; handCtrl.openTarget = 0;
+  } else {
+    gesture = '☝️ Move hand to rotate';
+    handCtrl.scaleTarget = 1; handCtrl.openTarget = 0;
+  }
+
+  // Rotation follows hand position
+  handCtrl.rotY = (px - 0.5) * 5;
+  handCtrl.rotX = (py - 0.5) * 3;
+
+  // Swipe detection (fast sideways movement with an open hand)
+  if (lastPalmX !== null && lastTime) {
+    const dt = (now - lastTime) / 1000;
+    const vx = (px - lastPalmX) / dt;
+    if (extCount >= 3 && Math.abs(vx) > 1.4 && now - lastSwipe > 900) {
+      const dir = vx > 0 ? 1 : -1;
+      const n = (currentShape + dir + shapeNames.length) % shapeNames.length;
+      setShape(shapeNames[n]);
+      lastSwipe = now;
+      gesture = '👉 Swipe: new shape';
+    }
+  }
+  lastPalmX = px; lastPalmY = py; lastTime = now;
+  statusEl.textContent = gesture;
+}
+
+async function startHands() {
+  handBtn.disabled = true;
+  statusEl.textContent = 'Starting camera... tap ALLOW if asked';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: 640, height: 480 }, audio: false
+    });
+    videoEl.srcObject = stream;
+    await videoEl.play();
+    videoEl.style.display = 'block';
+
+    statusEl.textContent = 'Loading hand tracker (10-20 seconds)...';
+    const hands = new Hands({
+      locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/' + f
+    });
+    hands.setOptions({
+      maxNumHands: 1, modelComplexity: 0,
+      minDetectionConfidence: 0.6, minTrackingConfidence: 0.5
+    });
+    hands.onResults(onHands);
+
+    handBtn.style.display = 'none';
+    statusEl.textContent = '👋 Show your hand to the camera';
+
+    async function loop() {
+      if (videoEl.readyState >= 2) {
+        try { await hands.send({ image: videoEl }); } catch (e) { console.log(e); }
+      }
+      requestAnimationFrame(loop);
+    }
+    loop();
+  } catch (err) {
+    handBtn.disabled = false;
+    statusEl.textContent = '❌ Camera problem: ' + (err.name || err.message);
+  }
+}
+handBtn.addEventListener('click', startHands);
+
 // ---------- ANIMATION LOOP ----------
 function animate() {
   requestAnimationFrame(animate);
+
+  // smooth hand effects
+  handCtrl.scale += (handCtrl.scaleTarget - handCtrl.scale) * 0.12;
+  handCtrl.open  += (handCtrl.openTarget  - handCtrl.open)  * 0.12;
+
   const pos = geometry.attributes.position.array;
-  const ex = explode * 4;
+  const ex = explode * 4 + handCtrl.open * 1.6;
+  const sc = handCtrl.scale;
 
   for (let i = 0; i < COUNT; i++) {
     const i3 = i * 3;
-    const tx = targets[i3]   + dirs[i3]   * ex;
-    const ty = targets[i3+1] + dirs[i3+1] * ex;
-    const tz = targets[i3+2] + dirs[i3+2] * ex;
-    pos[i3]   += (tx - pos[i3])   * 0.05;
-    pos[i3+1] += (ty - pos[i3+1]) * 0.05;
-    pos[i3+2] += (tz - pos[i3+2]) * 0.05;
+    const tx = targets[i3]   * sc + dirs[i3]   * ex;
+    const ty = targets[i3+1] * sc + dirs[i3+1] * ex;
+    const tz = targets[i3+2] * sc + dirs[i3+2] * ex;
+    pos[i3]   += (tx - pos[i3])   * 0.06;
+    pos[i3+1] += (ty - pos[i3+1]) * 0.06;
+    pos[i3+2] += (tz - pos[i3+2]) * 0.06;
   }
   geometry.attributes.position.needsUpdate = true;
 
@@ -358,14 +498,20 @@ function animate() {
     baseColor.setHSL(hue, 1, 0.55);
     applyColor();
   }
-  explode *= 0.96;                       // explosion fades, particles gather again
-  if (!dragging) points.rotation.y += 0.003;   // slow auto-rotation
+
+  explode *= 0.96;
+
+  if (handActive) {
+    points.rotation.y += (handCtrl.rotY - points.rotation.y) * 0.08;
+    points.rotation.x += (handCtrl.rotX - points.rotation.x) * 0.08;
+  } else if (!dragging) {
+    points.rotation.y += 0.003;
+  }
 
   renderer.render(scene, camera);
 }
 animate();
 
-// ---------- RESIZE ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -374,4 +520,3 @@ window.addEventListener('resize', () => {
 </script>
 </body>
 </html>
-
