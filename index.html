@@ -1216,5 +1216,40 @@ barEl.insertBefore(modelBtn, barEl.firstChild);
   });
 })();
   </script>
+  <script>
+// ===== HANDVERSE: SWIPE CYCLES THROUGH SHAPES + YOUR MODELS =====
+(function () {
+  let inHands = false, curBtn = null;
+  const isItem = b => { const t = b.textContent.trim(); return b.dataset.shape || t.startsWith('🌍') || t.startsWith('⭐'); };
+  const items = () => Array.from(barEl.querySelectorAll('button')).filter(isItem);
+
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b && isItem(b)) curBtn = b;
+  });
+
+  const origSet = setShape;
+  setShape = function (name) {
+    if (!inHands) return origSet(name);
+    // this call came from a hand swipe: work out the direction
+    const len = shapeNames.length;
+    const dir = (((shapeNames.indexOf(name) - currentShape) % len) + len) % len === 1 ? 1 : -1;
+    inHands = false;
+    const list = items();
+    if (!list.length) return origSet(name);
+    let i = list.indexOf(curBtn);
+    if (i < 0) i = list.findIndex(x => x.dataset.shape === shapeNames[currentShape]);
+    const next = list[(i + dir + list.length) % list.length];
+    next.click();
+    next.scrollIntoView({ inline: 'center', block: 'nearest' });
+  };
+
+  const origHands = onHands;
+  onHands = function (results) {
+    inHands = true;
+    try { origHands(results); } finally { inHands = false; }
+  };
+})();
+  </script>
 </body>
 </html>
