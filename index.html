@@ -1158,5 +1158,30 @@ barEl.insertBefore(modelBtn, barEl.firstChild);
     .catch(() => {});
 })();
   </script>
+  <script>
+// ===== HANDVERSE: HIGHLIGHT THE SELECTED MODEL =====
+(function () {
+  const isModelBtn = b => /^(🌍|⭐)/.test(b.textContent.trim());
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const txt = b.textContent;
+    if (txt.includes('Explode') || txt.includes('Reset view') || txt.includes('Delete saved')) return;
+
+    const deleting = Array.from(barEl.querySelectorAll('button'))
+      .some(x => x.textContent.includes('Delete saved') && x.classList.contains('active'));
+    if (deleting) return;
+
+    // clear the old highlight from all model buttons
+    barEl.querySelectorAll('button').forEach(x => { if (isModelBtn(x)) x.classList.remove('active'); });
+
+    if (isModelBtn(b)) {
+      // highlight this model, un-highlight the plain shapes
+      barEl.querySelectorAll('[data-shape]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    }
+  });
+})();
+  </script>
 </body>
 </html>
