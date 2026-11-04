@@ -1183,5 +1183,38 @@ barEl.insertBefore(modelBtn, barEl.firstChild);
   });
 })();
   </script>
+  <script>
+// ===== HANDVERSE: SELECTED LABEL + STRONG HIGHLIGHT =====
+(function () {
+  const hint = document.getElementById('hint');
+  const isModel = b => { const t = b.textContent.trim(); return t.startsWith('🌍') || t.startsWith('⭐'); };
+
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const txt = b.textContent.trim();
+    if (txt.includes('Explode') || txt.includes('Reset view') || txt.includes('Delete saved') ||
+        txt.includes('3D model') || txt.includes('Image')) return;
+
+    // remove the strong highlight from every model button
+    barEl.querySelectorAll('button').forEach(x => {
+      if (isModel(x)) {
+        x.style.background = ''; x.style.color = '';
+        x.style.boxShadow = ''; x.style.border = '';
+      }
+    });
+
+    if (isModel(b)) {
+      barEl.querySelectorAll('[data-shape]').forEach(x => x.classList.remove('active'));
+      b.style.background = '#1e90ff';
+      b.style.color = '#00112b';
+      b.style.boxShadow = '0 0 18px #1e90ff';
+      b.style.border = '2px solid #ffffff';
+    }
+    hint.textContent = '✅ Selected: ' + txt;
+    hint.style.color = '#ffffff';
+  });
+})();
+  </script>
 </body>
 </html>
