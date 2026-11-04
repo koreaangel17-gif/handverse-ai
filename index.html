@@ -1126,5 +1126,37 @@ barEl.insertBefore(modelBtn, barEl.firstChild);
   }).catch(err => showStatus('❌ Saving unavailable: ' + err.message));
 })();
   </script>
+  <script>
+// ===== HANDVERSE: MODELS FROM GITHUB (WORK ON EVERY DEVICE) =====
+(function () {
+  const user = 'koreaangel17-gif', repo = 'handverse-ai';
+  fetch('https://api.github.com/repos/' + user + '/' + repo + '/contents/models')
+    .then(r => r.json())
+    .then(list => {
+      if (!Array.isArray(list)) return;
+      const first = barEl.querySelector('[data-shape]');
+      list.filter(f => /\.glb$/i.test(f.name)).forEach(f => {
+        const name = f.name.replace(/\.glb$/i, '');
+        const label = name.length > 14 ? name.slice(0, 14) + '…' : name;
+        const b = mkBtn('🌍 ' + label);
+        barEl.insertBefore(b, first);
+        b.addEventListener('click', async () => {
+          showStatus('Loading ' + name + '...');
+          try {
+            const res = await fetch('models/' + encodeURIComponent(f.name));
+            const buf = await res.arrayBuffer();
+            new THREE.GLTFLoader().parse(buf, '', gltf => {
+              try {
+                useTargets(modelToTargets(gltf.scene));
+                showStatus('✅ ' + name);
+              } catch (e) { showStatus('❌ ' + e.message); }
+            }, () => showStatus('❌ Cannot read ' + f.name));
+          } catch (e) { showStatus('❌ Could not load ' + f.name); }
+        });
+      });
+    })
+    .catch(() => {});
+})();
+  </script>
 </body>
 </html>
