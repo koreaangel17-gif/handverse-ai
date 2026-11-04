@@ -788,5 +788,144 @@ document.getElementById('handRow').style.bottom = '80px';
 document.getElementById('hint').textContent = 'Swipe your hand or scroll the buttons below ➜';
 setShape(shapeNames[currentShape]);
 </script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+// ===== HANDVERSE: 3D MODEL + IMAGE LOADER =====
+function showStatus(t) { statusEl.textContent = t; }
+
+function useTargets(arr) {
+  targets.set(arr);
+  document.querySelectorAll('[data-shape]').forEach(b => b.classList.remove('active'));
+  explode = 0.6;
+}
+
+// ---------- 3D MODEL (.glb) ----------
+function modelToTargets(root) {
+  root.updateMatrixWorld(true);
+  const tris = [];
+  root.traverse(o => {
+    if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position, idx = o.geometry.index;
+    const get = i => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+    const n = idx ? idx.count : pos.count;
+    for (let i = 0; i + 2 < n; i += 3) {
+      const a = idx ? idx.getX(i) : i, b = idx ? idx.getX(i+1) : i+1, c = idx ? idx.getX(i+2) : i+2;
+      tris.push([get(a), get(b), get(c)]);
+    }
+  });
+  if (!tris.length) throw new Error('No mesh found in this model');
+
+  const cum = new Float64Array(tris.length);
+  let total = 0;
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+  tris.forEach((t, i) => {
+    e1.subVectors(t[1], t[0]); e2.subVectors(t[2], t[0]);
+    total += e1.cross(e2).length() * 0.5;
+    cum[i] = total;
+  });
+
+  const pts = new Float32Array(COUNT * 3);
+  for (let i = 0; i < COUNT; i++) {
+    const r = Math.random() * total;
+    let lo = 0, hi = tris.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < r) lo = m + 1; else hi = m; }
+    const t = tris[lo];
+    let a = Math.random(), b = Math.random();
+    if (a + b > 1) { a = 1 - a; b = 1 - b; }
+    pts[i*3]   = t[0].x + a*(t[1].x - t[0].x) + b*(t[2].x - t[0].x);
+    pts[i*3+1] = t[0].y + a*(t[1].y - t[0].y) + b*(t[2].y - t[0].y);
+    pts[i*3+2] = t[0].z + a*(t[1].z - t[0].z) + b*(t[2].z - t[0].z);
+  }
+
+  // centre and scale to fit
+  let mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
+  for (let i = 0; i < COUNT; i++) for (let k = 0; k < 3; k++) {
+    mn[k] = Math.min(mn[k], pts[i*3+k]); mx[k] = Math.max(mx[k], pts[i*3+k]);
+  }
+  const size = Math.max(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]) || 1;
+  const sc = 5.2 / size;
+  for (let i = 0; i < COUNT; i++) for (let k = 0; k < 3; k++) {
+    pts[i*3+k] = (pts[i*3+k] - (mn[k] + mx[k]) / 2) * sc;
+  }
+  return pts;
+}
+
+const modelInput = document.createElement('input');
+modelInput.type = 'file'; modelInput.accept = '.glb,.gltf,model/gltf-binary';
+modelInput.style.display = 'none';
+document.body.appendChild(modelInput);
+
+modelInput.addEventListener('change', () => {
+  const f = modelInput.files[0];
+  if (!f) return;
+  showStatus('Loading 3D model...');
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const loader = new THREE.GLTFLoader();
+      loader.parse(reader.result, '', gltf => {
+        try {
+          useTargets(modelToTargets(gltf.scene));
+          showStatus('✅ Model loaded: ' + f.name);
+        } catch (e) { showStatus('❌ ' + e.message); }
+      }, err => showStatus('❌ Cannot read this model (try another .glb)'));
+    } catch (e) { showStatus('❌ ' + e.message); }
+  };
+  reader.readAsArrayBuffer(f);
+  modelInput.value = '';
+});
+
+// ---------- IMAGE ----------
+const imgInput = document.createElement('input');
+imgInput.type = 'file'; imgInput.accept = 'image/*';
+imgInput.style.display = 'none';
+document.body.appendChild(imgInput);
+
+imgInput.addEventListener('change', () => {
+  const f = imgInput.files[0];
+  if (!f) return;
+  showStatus('Loading image...');
+  const img = new Image();
+  img.onload = () => {
+    const W = 220, H = Math.max(10, Math.round(220 * img.height / img.width));
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0, W, H);
+    const d = g.getImageData(0, 0, W, H).data;
+    const px = (x, y) => { const i = (y*W + x) * 4; return [d[i], d[i+1], d[i+2], d[i+3]]; };
+    const corners = [px(1,1), px(W-2,1), px(1,H-2), px(W-2,H-2)];
+    const bg = [0,1,2].map(k => corners.reduce((s, p) => s + p[k], 0) / 4);
+    const keep = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = px(x, y);
+      if (p[3] < 128) continue;
+      const diff = Math.abs(p[0]-bg[0]) + Math.abs(p[1]-bg[1]) + Math.abs(p[2]-bg[2]);
+      if (diff > 60) keep.push([x, y, (p[0]+p[1]+p[2]) / 765]);
+    }
+    if (keep.length < 50) { showStatus('❌ Could not find a clear shape in this image'); return; }
+    const scale = 5 / Math.max(W, H);
+    const out = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const p = keep[Math.floor(Math.random() * keep.length)];
+      out[i*3]   = (p[0] - W/2 + Math.random()) * scale;
+      out[i*3+1] = -(p[1] - H/2 + Math.random()) * scale;
+      out[i*3+2] = (p[2] - 0.5) * 1.6 + (Math.random() - 0.5) * 0.2;
+    }
+    useTargets(out);
+    showStatus('✅ Image loaded');
+  };
+  img.onerror = () => showStatus('❌ Cannot open this image');
+  img.src = URL.createObjectURL(f);
+  imgInput.value = '';
+});
+
+// ---------- BUTTONS ----------
+const modelBtn = mkBtn('📦 3D model');
+modelBtn.addEventListener('click', () => modelInput.click());
+const imgBtn = mkBtn('🖼 Image');
+imgBtn.addEventListener('click', () => imgInput.click());
+barEl.insertBefore(imgBtn, barEl.firstChild);
+barEl.insertBefore(modelBtn, barEl.firstChild);
+</script>
 </body>
 </html>
