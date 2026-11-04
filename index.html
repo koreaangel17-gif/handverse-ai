@@ -1,1 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>HANDVERSE AI</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #000510; overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  canvas { display: block; touch-action: none; }
+
+  #title {
+    position: fixed; top: 12px; left: 0; right: 0;
+    text-align: center; color: #3db8ff;
+    font-size: 20px; letter-spacing: 6px; font-weight: bold;
+    text-shadow: 0 0 12px #0099ff;
+    pointer-events: none;
+  }
+  #hint {
+    position: fixed; top: 42px; left: 0; right: 0;
+    text-align: center; color: #5a8fb8; font-size: 12px;
+    pointer-events: none;
+  }
+  #bar {
+    position: fixed; bottom: 14px; left: 8px; right: 8px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+  }
+  .btn {
+    background: rgba(0, 120, 255, 0.15);
+    border: 1px solid #1e90ff; color: #8fd3ff;
+    padding: 10px 14px; border-radius: 20px;
+    font-size: 14px; box-shadow: 0 0 8px rgba(30,144,255,0.5);
+  }
+  #colorPanel {
+    position: fixed; top: 70px; left: 8px; right: 8px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+    align-items: center;
+  }
+  .swatch {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.4);
+    box-shadow: 0 0 8px currentColor;
+  }
+  .swatch.active { border-color: #fff; transform: scale(1.2); }
+  #picker {
+    width: 34px; height: 34px; border: none; padding: 0;
+    background: none; border-radius: 50%;
+  }
+  #sliders {
+    position: fixed; top: 112px; left: 16px; right: 16px;
+    display: flex; gap: 16px; justify-content: center;
+    color: #8fd3ff; font-size: 12px;
+  }
+  #sliders label { display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 160px; }
+  #sliders input { width: 100%; }
+  .btn.active {
+    background: #1e90ff; color: #00112b;
+    box-shadow: 0 0 16px #1e90ff;
+  }
+</style>
+</head>
+<body>
+
+<div id="title">HANDVERSE AI</div>
+<div id="hint">Drag = rotate &nbsp;•&nbsp; Two fingers = zoom</div>
+
+<div id="colorPanel">
+  <button class="swatch active" style="background:#1e90ff;color:#1e90ff" data-color="#1e90ff"></button>
+  <button class="swatch" style="background:#a020ff;color:#a020ff" data-color="#a020ff"></button>
+  <button class="swatch" style="background:#00ffee;color:#00ffee" data-color="#00ffee"></button>
+  <button class="swatch" style="background:#22ff66;color:#22ff66" data-color="#22ff66"></button>
+  <button class="swatch" style="background:#ff2233;color:#ff2233" data-color="#ff2233"></button>
+  <button class="swatch" style="background:#ffc933;color:#ffc933" data-color="#ffc933"></button>
+  <button class="swatch" style="background:#ffffff;color:#ffffff" data-color="#ffffff"></button>
+  <button class="swatch" style="background:#ff4fb8;color:#ff4fb8" data-color="#ff4fb8"></button>
+  <input type="color" id="picker" value="#1e90ff">
+  <button class="btn" id="rainbowBtn">🌈 Rainbow</button>
+</div>
+<div id="sliders">
+  <label>Brightness<input type="range" id="bright" min="0.3" max="1.5" step="0.05" value="1"></label>
+  <label>Glow size<input type="range" id="glow" min="0.04" max="0.3" step="0.01" value="0.09"></label>
+</div>
+<div id="bar">
+  <button class="btn active" data-shape="sphere">Sphere</button>
+  <button class="btn" data-shape="cube">Cube</button>
+  <button class="btn" data-shape="pyramid">Pyramid</button>
+  <button class="btn" data-shape="heart">Heart</button>
+  <button class="btn" data-shape="torus">Torus</button>
+  <button class="btn" data-shape="spiral">Galaxy</button>
+  <button class="btn" id="explodeBtn">💥 Explode</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- BASIC SETUP ----------
+const COUNT = 12000;               // number of particles
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000510, 0.03);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.z = 7;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000510);
+document.body.appendChild(renderer.domElement);
+
+// ---------- GLOWING PARTICLE TEXTURE ----------
+function makeGlowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.25, 'rgba(255,255,255,0.7)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+// ---------- PARTICLES ----------
+const positions = new Float32Array(COUNT * 3);
+const targets   = new Float32Array(COUNT * 3);
+const dirs      = new Float32Array(COUNT * 3);   // random directions for explosion
+
+for (let i = 0; i < COUNT; i++) {
+  // start as a random cloud
+  positions[i*3]   = (Math.random() - 0.5) * 20;
+  positions[i*3+1] = (Math.random() - 0.5) * 20;
+  positions[i*3+2] = (Math.random() - 0.5) * 20;
+  // random unit direction
+  const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2;
+  const s = Math.sqrt(1 - u*u);
+  dirs[i*3] = s * Math.cos(t); dirs[i*3+1] = u; dirs[i*3+2] = s * Math.sin(t);
+}
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+const material = new THREE.PointsMaterial({
+  size: 0.09,
+  map: makeGlowTexture(),
+  color: 0x1e90ff,               // electric blue
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  sizeAttenuation: true
+});
+
+const points = new THREE.Points(geometry, material);
+scene.add(points);
+
+// ---------- SHAPE GENERATORS ----------
+function rnd(a, b) { return a + Math.random() * (b - a); }
+
+function sampleTriangles(tris) {
+  // tris = array of [A, B, C], each a point [x,y,z]
+  const out = new Float32Array(COUNT * 3);
+  for (let i = 0; i < COUNT; i++) {
+    const tri = tris[Math.floor(Math.random() * tris.length)];
+    let r1 = Math.random(), r2 = Math.random();
+    if (r1 + r2 > 1) { r1 = 1 - r1; r2 = 1 - r2; }
+    for (let k = 0; k < 3; k++) {
+      out[i*3+k] = tri[0][k] + r1 * (tri[1][k] - tri[0][k]) + r2 * (tri[2][k] - tri[0][k]);
+    }
+  }
+  return out;
+}
+
+const shapes = {
+  sphere() {
+    const out = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2;
+      const s = Math.sqrt(1 - u*u), R = 2.2;
+      out[i*3] = R * s * Math.cos(t); out[i*3+1] = R * u; out[i*3+2] = R * s * Math.sin(t);
+    }
+    return out;
+  },
+  cube() {
+    const out = new Float32Array(COUNT * 3);
+    const S = 1.8;
+    for (let i = 0; i < COUNT; i++) {
+      const axis = Math.floor(Math.random() * 3), sign = Math.random() < 0.5 ? -S : S;
+      const p = [rnd(-S, S), rnd(-S, S), rnd(-S, S)];
+      p[axis] = sign;
+      out[i*3] = p[0]; out[i*3+1] = p[1]; out[i*3+2] = p[2];
+    }
+    return out;
+  },
+  pyramid() {
+    const A = [0, 2.4, 0];
+    const B1 = [-2, -1.6, -2], B2 = [2, -1.6, -2], B3 = [2, -1.6, 2], B4 = [-2, -1.6, 2];
+    return sampleTriangles([
+      [A, B1, B2], [A, B2, B3], [A, B3, B4], [A, B4, B1],
+      [B1, B2, B3], [B1, B3, B4]
+    ]);
+  },
+  heart() {
+    const out = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const t = Math.random() * Math.PI * 2;
+      const k = 0.75 + 0.25 * Math.random();      // thickness of the shell
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+      const sc = 0.14 * k;
+      out[i*3]   = x * sc;
+      out[i*3+1] = y * sc + 0.2;
+      out[i*3+2] = rnd(-1, 1) * 1.1 * k * (1 - Math.abs(x) / 20);
+    }
+    return out;
+  },
+  torus() {
+    const out = new Float32Array(COUNT * 3);
+    const R = 1.9, r = 0.7;
+    for (let i = 0; i < COUNT; i++) {
+      const u = Math.random() * Math.PI * 2, v = Math.random() * Math.PI * 2;
+      out[i*3]   = (R + r * Math.cos(v)) * Math.cos(u);
+      out[i*3+1] = r * Math.sin(v);
+      out[i*3+2] = (R + r * Math.cos(v)) * Math.sin(u);
+    }
+    return out;
+  },
+  spiral() {
+    const out = new Float32Array(COUNT * 3);
+    const arms = 3;
+    for (let i = 0; i < COUNT; i++) {
+      const radius = Math.pow(Math.random(), 0.7) * 3.2;
+      const arm = Math.floor(Math.random() * arms) * (Math.PI * 2 / arms);
+      const angle = arm + radius * 1.1 + rnd(-0.25, 0.25);
+      out[i*3]   = Math.cos(angle) * radius;
+      out[i*3+1] = rnd(-0.15, 0.15) * (1 + (3.2 - radius) * 0.3);
+      out[i*3+2] = Math.sin(angle) * radius;
+    }
+    return out;
+  }
+};
+
+function setShape(name) {
+  targets.set(shapes[name]());
+}
+setShape('sphere');
+
+// ---------- BUTTONS ----------
+let explode = 0;
+document.querySelectorAll('[data-shape]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-shape]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    setShape(btn.dataset.shape);
+  });
+});
+document.getElementById('explodeBtn').addEventListener('click', () => { explode = 1; });
+
+// ---------- TOUCH: DRAG TO ROTATE, PINCH TO ZOOM ----------
+const pointers = new Map();
+let lastPinch = 0, dragging = false;
+const canvas = renderer.domElement;
+
+canvas.addEventListener('pointerdown', e => {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  dragging = true;
+  if (pointers.size === 2) lastPinch = pinchDistance();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 1) {
+    points.rotation.y += dx * 0.008;
+    points.rotation.x += dy * 0.008;
+  } else if (pointers.size === 2) {
+    const d = pinchDistance();
+    camera.position.z -= (d - lastPinch) * 0.02;
+    camera.position.z = Math.max(2.5, Math.min(16, camera.position.z));
+    lastPinch = d;
+  }
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) dragging = false;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+function pinchDistance() {
+  const p = Array.from(pointers.values());
+  return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+}
+
+// ---------- COLOUR CONTROLS ----------
+let rainbow = false, hue = 0;
+let baseColor = new THREE.Color(0x1e90ff);
+let brightness = 1;
+
+function applyColor() {
+  material.color.copy(baseColor).multiplyScalar(brightness);
+}
+
+document.querySelectorAll('.swatch').forEach(s => {
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+    s.classList.add('active');
+    rainbow = false;
+    document.getElementById('rainbowBtn').classList.remove('active');
+    baseColor.set(s.dataset.color);
+    applyColor();
+  });
+});
+
+document.getElementById('picker').addEventListener('input', e => {
+  document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+  rainbow = false;
+  document.getElementById('rainbowBtn').classList.remove('active');
+  baseColor.set(e.target.value);
+  applyColor();
+});
+
+document.getElementById('rainbowBtn').addEventListener('click', e => {
+  rainbow = !rainbow;
+  e.target.classList.toggle('active', rainbow);
+});
+
+document.getElementById('bright').addEventListener('input', e => {
+  brightness = parseFloat(e.target.value);
+  applyColor();
+});
+document.getElementById('glow').addEventListener('input', e => {
+  material.size = parseFloat(e.target.value);
+});
+// ---------- ANIMATION LOOP ----------
+function animate() {
+  requestAnimationFrame(animate);
+  const pos = geometry.attributes.position.array;
+  const ex = explode * 4;
+
+  for (let i = 0; i < COUNT; i++) {
+    const i3 = i * 3;
+    const tx = targets[i3]   + dirs[i3]   * ex;
+    const ty = targets[i3+1] + dirs[i3+1] * ex;
+    const tz = targets[i3+2] + dirs[i3+2] * ex;
+    pos[i3]   += (tx - pos[i3])   * 0.05;
+    pos[i3+1] += (ty - pos[i3+1]) * 0.05;
+    pos[i3+2] += (tz - pos[i3+2]) * 0.05;
+  }
+  geometry.attributes.position.needsUpdate = true;
+
+  if (rainbow) {
+    hue = (hue + 0.002) % 1;
+    baseColor.setHSL(hue, 1, 0.55);
+    applyColor();
+  }
+  explode *= 0.96;                       // explosion fades, particles gather again
+  if (!dragging) points.rotation.y += 0.003;   // slow auto-rotation
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ---------- RESIZE ----------
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
 
