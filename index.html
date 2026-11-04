@@ -1314,32 +1314,29 @@ document.getElementById('delModels').onclick = async () => {
   } catch (e) {}
   alert('Done. Reloading...');
   location.reload();
-};
-</script>
-  <button id="delModels" style="position:fixed;bottom:80px;left:12px;z-index:99999;padding:12px 16px;border:0;border-radius:10px;background:#e53935;color:#fff;font-size:16px">🗑 Delete my phone models</button>
-<script>
-document.getElementById('delModels').onclick = async () => {
-  if (!confirm('Delete all models saved on this phone? Shared models will stay.')) return;
-  try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
-  try {
-    const dbs = await indexedDB.databases();
-    dbs.forEach(d => indexedDB.deleteDatabase(d.name));
-  } catch (e) {}
-  try {
-    const keys = await caches.keys();
-    await Promise.all(keys.map(k => caches.delete(k)));
-  } catch (e) {}
-  alert('Done. Reloading...');
-  location.reload();
-};
-</script>
-<script>
+}; 
+</script> 
+  <script>
 (function () {
+  // remove the red buttons
+  function killRed() {
+    document.querySelectorAll('button').forEach(function (b) {
+      if (b.textContent.indexOf('Delete my phone models') > -1) b.remove();
+    });
+  }
+  killRed();
+  setTimeout(killRed, 500);
+  window.addEventListener('load', killRed);
+
+  // credit line (only one)
+  var old = document.getElementById('credit2');
+  if (old) old.remove();
   var c = document.createElement('div');
+  c.id = 'credit2';
   c.textContent = 'Made by Nessan dhimal';
-  c.style.cssText = 'position:fixed;top:4px;left:0;right:0;text-align:center;z-index:2147483647;pointer-events:none;font:600 13px sans-serif;letter-spacing:1px;color:#fff;text-shadow:0 0 4px #000';
+  c.style.cssText = 'position:fixed;top:0;left:0;right:0;text-align:center;z-index:2147483647;pointer-events:none;font:600 10px/1 sans-serif;letter-spacing:1px;color:#fff;text-shadow:0 0 3px #000';
   document.body.appendChild(c);
 })();
-</script>  
+  </script>
 </body>
 </html>
