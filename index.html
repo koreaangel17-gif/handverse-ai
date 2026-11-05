@@ -1474,5 +1474,65 @@ document.getElementById('delModels').onclick = async () => {
     handCtrl.scaleTarget = Math.max(.3, Math.min(2.2, d * 2.6)) * (openB >= 4 ? 1.15 : openB <= 1 ? .7 : 1);
     handCtrl.openTarget = openB >= 4 ? 1 : 0;
     if (rainbow)
+<script>
+// ===== SWIPE THROUGH ALL ITEMS (your models + built-in shapes) =====
+(function () {
+  let curBtn = null, suppress = false, lastDir = 0, lastDirT = 0;
+  let oneX = null, oneT = 0, oneSwipe = 0;
+
+  const isItem = b => {
+    const t = b.textContent.trim();
+    return b.dataset.shape || t.startsWith('🌍') || t.startsWith('⭐');
+  };
+
+  // remember which button was tapped last
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b && isItem(b)) curBtn = b;
+  });
+
+  // block the old "models only" swipe; real finger taps still work
+  barEl.addEventListener('click', e => {
+    if (suppress) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
+  function swipeNext(dir) {
+    lastDir = dir; lastDirT = performance.now();
+    const list = Array.from(barEl.querySelectorAll('button')).filter(isItem);
+    if (!list.length) return;
+    let i = list.indexOf(curBtn);
+    if (i < 0) i = list.findIndex(x => x.classList.contains('active') || x.style.background);
+    if (i < 0) i = 0;
+    const nx = list[(i + dir + list.length) % list.length];
+    curBtn = nx;
+    nx.click();
+    nx.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+
+  // ignore the hand coming back after a swipe
+  const dirOK = (d, now) => !(lastDir === -d && now - lastDirT < 1400);
+
+  const prevHands = onHands;
+  onHands = function (r) {
+    const L = r.multiHandLandmarks;
+    suppress = true;
+    try { prevHands(r); } finally { suppress = false; }
+    if (!L || !L.length) { oneX = null; return; }
+
+    const lm = L[0], now = performance.now(), px = 1 - lm[9].x;
+    const open = fingerStates(lm).filter(Boolean).length >= 3;
+    if (oneX !== null) {
+      const dt = (now - oneT) / 1000, vx = (px - oneX) / dt;
+      const dir = vx > 0 ? 1 : -1;
+      if (open && dt < .4 && Math.abs(vx) > 1.1 && now - oneSwipe > 900 && dirOK(dir, now)) {
+        oneSwipe = now;
+        swipeNext(dir);
+        statusEl.textContent = '👉 ' + (curBtn ? curBtn.textContent.trim() : '');
+      }
+    }
+    oneX = px; oneT = now;
+  };
+})();
+</script>
 </body>
 </html>
