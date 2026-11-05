@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>HANDVERSE AI</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #000510; overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  canvas { display: block; touch-action: none; }
+
+  #title {
+    position: fixed; top: 10px; left: 0; right: 0;
+    text-align: center; color: #3db8ff;
+    font-size: 20px; letter-spacing: 6px; font-weight: bold;
+    text-shadow: 0 0 12px #0099ff; pointer-events: none;
+  }
+  #hint {
+    position: fixed; top: 38px; left: 0; right: 0;
+    text-align: center; color: #5a8fb8; font-size: 12px; pointer-events: none;
+  }
+  #colorPanel {
+    position: fixed; top: 60px; left: 8px; right: 8px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+    align-items: center;
+  }
+  .swatch {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.4);
+    box-shadow: 0 0 8px currentColor;
+  }
+  .swatch.active { border-color: #fff; transform: scale(1.2); }
+  #picker { width: 34px; height: 34px; border: none; padding: 0; background: none; }
+  #sliders {
+    position: fixed; top: 150px; left: 16px; right: 16px;
+    display: flex; gap: 16px; justify-content: center;
+    color: #8fd3ff; font-size: 12px;
+  }
+  #sliders label { display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 160px; }
+  #sliders input { width: 100%; }
+
+  #bar {
+    position: fixed; bottom: 14px; left: 8px; right: 8px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+  }
+  .btn {
+    background: rgba(0, 120, 255, 0.15);
+    border: 1px solid #1e90ff; color: #8fd3ff;
+    padding: 10px 14px; border-radius: 20px;
+    font-size: 14px; box-shadow: 0 0 8px rgba(30,144,255,0.5);
+  }
+  .btn.active { background: #1e90ff; color: #00112b; box-shadow: 0 0 16px #1e90ff; }
+
+  #handBtn { font-size: 16px; padding: 12px 18px; }
+  #handRow {
+    position: fixed; bottom: 140px; left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    pointer-events: none;
+  }
+  #handRow button { pointer-events: auto; }
+  #status {
+    color: #8fd3ff; font-size: 13px; text-align: center;
+    text-shadow: 0 0 6px #000; padding: 0 10px;
+  }
+  #cam {
+    position: fixed; top: 190px; right: 8px;
+    width: 96px; height: 72px; border-radius: 10px;
+    border: 1px solid #1e90ff; opacity: 0.75;
+    transform: scaleX(-1); object-fit: cover; display: none;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="title">HANDVERSE AI</div>
+<div id="hint">Drag = rotate &nbsp;•&nbsp; Two fingers = zoom</div>
+
+<div id="colorPanel">
+  <button class="swatch active" style="background:#1e90ff;color:#1e90ff" data-color="#1e90ff"></button>
+  <button class="swatch" style="background:#a020ff;color:#a020ff" data-color="#a020ff"></button>
+  <button class="swatch" style="background:#00ffee;color:#00ffee" data-color="#00ffee"></button>
+  <button class="swatch" style="background:#22ff66;color:#22ff66" data-color="#22ff66"></button>
+  <button class="swatch" style="background:#ff2233;color:#ff2233" data-color="#ff2233"></button>
+  <button class="swatch" style="background:#ffc933;color:#ffc933" data-color="#ffc933"></button>
+  <button class="swatch" style="background:#ffffff;color:#ffffff" data-color="#ffffff"></button>
+  <button class="swatch" style="background:#ff4fb8;color:#ff4fb8" data-color="#ff4fb8"></button>
+  <input type="color" id="picker" value="#1e90ff">
+  <button class="btn" id="rainbowBtn">🌈 Rainbow</button>
+</div>
+<div id="sliders">
+  <label>Brightness<input type="range" id="bright" min="0.3" max="1.5" step="0.05" value="1"></label>
+  <label>Glow size<input type="range" id="glow" min="0.04" max="0.3" step="0.01" value="0.09"></label>
+</div>
+
+<video id="cam" playsinline muted></video>
+
+<div id="handRow">
+  <div id="status"></div>
+  <button class="btn" id="handBtn">✋ Start Hand Control</button>
+</div>
+
+<div id="bar">
+  <button class="btn active" data-shape="sphere">Sphere</button>
+  <button class="btn" data-shape="cube">Cube</button>
+  <button class="btn" data-shape="pyramid">Pyramid</button>
+  <button class="btn" data-shape="heart">Heart</button>
+  <button class="btn" data-shape="torus">Torus</button>
+  <button class="btn" data-shape="spiral">Galaxy</button>
+  <button class="btn" id="explodeBtn">💥 Explode</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
+<script>
+// ---------- BASIC SETUP ----------
+const COUNT = 12000;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.z = 7;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000510);
+document.body.appendChild(renderer.domElement);
+
+function makeGlowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.25, 'rgba(255,255,255,0.7)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+// ---------- PARTICLES ----------
+const positions = new Float32Array(COUNT * 3);
+const targets   = new Float32Array(COUNT * 3);
+const dirs      = new Float32Array(COUNT * 3);
+
+for (let i = 0; i < COUNT; i++) {
+  positions[i*3]   = (Math.random() - 0.5) * 20;
+  positions[i*3+1] = (Math.random() - 0.5) * 20;
+  positions[i*3+2] = (Math.random() - 0.5) * 20;
+  const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2;
+  const s = Math.sqrt(1 - u*u);
+  dirs[i*3] = s * Math.cos(t); dirs[i*3+1] = u; dirs[i*3+2] = s * Math.sin(t);
+}
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+const material = new THREE.PointsMaterial({
+  size: 0.09, map: makeGlowTexture(), color: 0x1e90ff,
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending, sizeAttenuation: true
+});
+const points = new THREE.Points(geometry, material);
+scene.add(points);
+
+// ---------- SHAPE GENERATORS ----------
+function rnd(a, b) { return a + Math.random() * (b - a); }
+
+function sampleTriangles(tris) {
+  const out = new Float32Array(COUNT * 3);
+  for (let i = 0; i < COUNT; i++) {
+    const tri = tris[Math.floor(Math.random() * tris.length)];
+    let r1 = Math.random(), r2 = Math.random();
+    if (r1 + r2 > 1) { r1 = 1 - r1; r2 = 1 - r2; }
+    for (let k = 0; k < 3; k++) {
+      out[i*3+k] = tri[0][k] + r1 * (tri[1][k] - tri[0][k]) + r2 * (tri[2][k] - tri[0][k]);
+    }
+  }
+  return out;
+}
+
+const shapes = {
+  sphere() {
+    const out = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2;
+      const s = Math.sqrt(1 - u*u), R = 2.2;
+      out[i*3] = R * s * Math.cos(t); out[i*3+1] = R * u; out[i*3+2] = R * s * Math.sin(t);
+    }
+    return out;
+  },
+  cube() {
+    const out = new Float32Array(COUNT * 3);
+    const S = 1.8;
+    for (let i = 0; i < COUNT; i++) {
+      const axis = Math.floor(Math.random() * 3), sign = Math.random() < 0.5 ? -S : S;
+      const p = [rnd(-S, S), rnd(-S, S), rnd(-S, S)];
+      p[axis] = sign;
+      out[i*3] = p[0]; out[i*3+1] = p[1]; out[i*3+2] = p[2];
+    }
+    return out;
+  },
+  pyramid() {
+    const A = [0, 2.4, 0];
+    const B1 = [-2, -1.6, -2], B2 = [2, -1.6, -2], B3 = [2, -1.6, 2], B4 = [-2, -1.6, 2];
+    return sampleTriangles([
+      [A, B1, B2], [A, B2, B3], [A, B3, B4], [A, B4, B1],
+      [B1, B2, B3], [B1, B3, B4]
+    ]);
+  },
+  heart() {
+    const out = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const t = Math.random() * Math.PI * 2;
+      const k = 0.75 + 0.25 * Math.random();
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+      const sc = 0.14 * k;
+      out[i*3]   = x * sc;
+      out[i*3+1] = y * sc + 0.2;
+      out[i*3+2] = rnd(-1, 1) * 1.1 * k * (1 - Math.abs(x) / 20);
+    }
+    return out;
+  },
+  torus() {
+    const out = new Float32Array(COUNT * 3);
+    const R = 1.9, r = 0.7;
+    for (let i = 0; i < COUNT; i++) {
+      const u = Math.random() * Math.PI * 2, v = Math.random() * Math.PI * 2;
+      out[i*3]   = (R + r * Math.cos(v)) * Math.cos(u);
+      out[i*3+1] = r * Math.sin(v);
+      out[i*3+2] = (R + r * Math.cos(v)) * Math.sin(u);
+    }
+    return out;
+  },
+  spiral() {
+    const out = new Float32Array(COUNT * 3);
+    const arms = 3;
+    for (let i = 0; i < COUNT; i++) {
+      const radius = Math.pow(Math.random(), 0.7) * 3.2;
+      const arm = Math.floor(Math.random() * arms) * (Math.PI * 2 / arms);
+      const angle = arm + radius * 1.1 + rnd(-0.25, 0.25);
+      out[i*3]   = Math.cos(angle) * radius;
+      out[i*3+1] = rnd(-0.15, 0.15) * (1 + (3.2 - radius) * 0.3);
+      out[i*3+2] = Math.sin(angle) * radius;
+    }
+    return out;
+  }
+};
+
+const shapeNames = ['sphere', 'cube', 'pyramid', 'heart', 'torus', 'spiral'];
+let currentShape = 0;
+
+function setShape(name) {
+  targets.set(shapes[name]());
+  currentShape = shapeNames.indexOf(name);
+  document.querySelectorAll('[data-shape]').forEach(b => {
+    b.classList.toggle('active', b.dataset.shape === name);
+  });
+}
+setShape('sphere');
+
+// ---------- BUTTONS ----------
+let explode = 0;
+document.querySelectorAll('[data-shape]').forEach(btn => {
+  btn.addEventListener('click', () => setShape(btn.dataset.shape));
+});
+document.getElementById('explodeBtn').addEventListener('click', () => { explode = 1; });
+
+// ---------- TOUCH ----------
+const pointers = new Map();
+let lastPinch = 0, dragging = false;
+const canvas = renderer.domElement;
+
+canvas.addEventListener('pointerdown', e => {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  dragging = true;
+  if (pointers.size === 2) lastPinch = pinchDistance();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) {
+    points.rotation.y += dx * 0.008;
+    points.rotation.x += dy * 0.008;
+  } else if (pointers.size === 2) {
+    const d = pinchDistance();
+    camera.position.z -= (d - lastPinch) * 0.02;
+    camera.position.z = Math.max(2.5, Math.min(16, camera.position.z));
+    lastPinch = d;
+  }
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) dragging = false;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+function pinchDistance() {
+  const p = Array.from(pointers.values());
+  return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+}
+
+// ---------- COLOUR CONTROLS ----------
+let rainbow = false, hue = 0;
+let baseColor = new THREE.Color(0x1e90ff);
+let brightness = 1;
+
+function applyColor() {
+  material.color.copy(baseColor).multiplyScalar(brightness);
+}
+function setRainbow(on) {
+  rainbow = on;
+  document.getElementById('rainbowBtn').classList.toggle('active', on);
+}
+
+document.querySelectorAll('.swatch').forEach(s => {
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+    s.classList.add('active');
+    setRainbow(false);
+    baseColor.set(s.dataset.color);
+    applyColor();
+  });
+});
+document.getElementById('picker').addEventListener('input', e => {
+  document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+  setRainbow(false);
+  baseColor.set(e.target.value);
+  applyColor();
+});
+document.getElementById('rainbowBtn').addEventListener('click', () => setRainbow(!rainbow));
+document.getElementById('bright').addEventListener('input', e => {
+  brightness = parseFloat(e.target.value);
+  applyColor();
+});
+document.getElementById('glow').addEventListener('input', e => {
+  material.size = parseFloat(e.target.value);
+});
+
+// ---------- HAND CONTROL ----------
+const statusEl = document.getElementById('status');
+const videoEl = document.getElementById('cam');
+const handBtn = document.getElementById('handBtn');
+
+let handActive = false;      // is a hand currently visible
+let handCtrl = {
+  scale: 1, scaleTarget: 1,   // gather / spread size
+  open: 0, openTarget: 0,     // extra spread
+  rotX: 0, rotY: 0            // target rotation
+};
+let lastPalmX = null, lastPalmY = null, lastTime = 0;
+let lastSwipe = 0, lastPeace = 0;
+let lastSeen = 0;
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function fingerStates(lm) {
+  const wrist = lm[0];
+  const tips = [8, 12, 16, 20], pips = [6, 10, 14, 18];
+  return tips.map((t, i) => dist(lm[t], wrist) > dist(lm[pips[i]], wrist) * 1.05);
+}
+
+function onHands(results) {
+  const now = performance.now();
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    if (now - lastSeen > 400) {
+      handActive = false;
+      handCtrl.scaleTarget = 1; handCtrl.openTarget = 0;
+      lastPalmX = null;
+      statusEl.textContent = '👋 Show your hand to the camera';
+    }
+    return;
+  }
+  lastSeen = now;
+  handActive = true;
+
+  const lm = results.multiHandLandmarks[0];
+  const palm = dist(lm[0], lm[9]) || 0.1;
+  const ext = fingerStates(lm);
+  const extCount = ext.filter(Boolean).length;
+  const pinchRatio = dist(lm[4], lm[8]) / palm;
+
+  // Palm centre, mirrored so it matches what you see
+  const px = 1 - lm[9].x, py = lm[9].y;
+
+  let gesture = '';
+  if (pinchRatio < 0.3) {
+    gesture = '🤏 Pinch: move hand up/down to zoom';
+    if (lastPalmY !== null) {
+      camera.position.z += (py - lastPalmY) * 14;
+      camera.position.z = Math.max(2.5, Math.min(16, camera.position.z));
+    }
+    handCtrl.scaleTarget = 1; handCtrl.openTarget = 0;
+  } else if (ext[0] && ext[1] && !ext[2] && !ext[3]) {
+    gesture = '✌️ Peace: rainbow toggle';
+    if (now - lastPeace > 1500) { setRainbow(!rainbow); lastPeace = now; }
+  } else if (extCount >= 4) {
+    gesture = '🖐 Open palm: spread';
+    handCtrl.scaleTarget = 1.5; handCtrl.openTarget = 1;
+  } else if (extCount <= 1) {
+    gesture = '✊ Fist: gather';
+    handCtrl.scaleTarget = 0.35; handCtrl.openTarget = 0;
+  } else {
+    gesture = '☝️ Move hand to rotate';
+    handCtrl.scaleTarget = 1; handCtrl.openTarget = 0;
+  }
+
+  // Rotation follows hand position
+  handCtrl.rotY = (px - 0.5) * 5;
+  handCtrl.rotX = (py - 0.5) * 3;
+
+  // Swipe detection (fast sideways movement with an open hand)
+  if (lastPalmX !== null && lastTime) {
+    const dt = (now - lastTime) / 1000;
+    const vx = (px - lastPalmX) / dt;
+    if (extCount >= 3 && Math.abs(vx) > 1.4 && now - lastSwipe > 900) {
+      const dir = vx > 0 ? 1 : -1;
+      const n = (currentShape + dir + shapeNames.length) % shapeNames.length;
+      setShape(shapeNames[n]);
+      lastSwipe = now;
+      gesture = '👉 Swipe: new shape';
+    }
+  }
+  lastPalmX = px; lastPalmY = py; lastTime = now;
+  statusEl.textContent = gesture;
+}
+
+async function startHands() {
+  handBtn.disabled = true;
+  statusEl.textContent = 'Starting camera... tap ALLOW if asked';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: 640, height: 480 }, audio: false
+    });
+    videoEl.srcObject = stream;
+    await videoEl.play();
+    videoEl.style.display = 'block';
+
+    statusEl.textContent = 'Loading hand tracker (10-20 seconds)...';
+    const hands = new Hands({
+      locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/' + f
+    });
+    hands.setOptions({
+      maxNumHands: 2, modelComplexity: 0,
+      minDetectionConfidence: 0.6, minTrackingConfidence: 0.5
+    });
+    hands.onResults(onHands);
+
+    handBtn.style.display = 'none';
+    statusEl.textContent = '👋 Show your hand to the camera';
+
+    async function loop() {
+      if (videoEl.readyState >= 2) {
+        try { await hands.send({ image: videoEl }); } catch (e) { console.log(e); }
+      }
+      requestAnimationFrame(loop);
+    }
+    loop();
+  } catch (err) {
+    handBtn.disabled = false;
+    statusEl.textContent = '❌ Camera problem: ' + (err.name || err.message);
+  }
+}
+handBtn.addEventListener('click', startHands);
+
+// ---------- ANIMATION LOOP ----------
+function animate() {
+  requestAnimationFrame(animate);
+
+  // smooth hand effects
+  handCtrl.scale += (handCtrl.scaleTarget - handCtrl.scale) * 0.12;
+  handCtrl.open  += (handCtrl.openTarget  - handCtrl.open)  * 0.12;
+
+  const pos = geometry.attributes.position.array;
+  const ex = explode * 4 + handCtrl.open * 1.6;
+  const sc = handCtrl.scale;
+
+  for (let i = 0; i < COUNT; i++) {
+    const i3 = i * 3;
+    const tx = targets[i3]   * sc + dirs[i3]   * ex;
+    const ty = targets[i3+1] * sc + dirs[i3+1] * ex;
+    const tz = targets[i3+2] * sc + dirs[i3+2] * ex;
+    pos[i3]   += (tx - pos[i3])   * 0.06;
+    pos[i3+1] += (ty - pos[i3+1]) * 0.06;
+    pos[i3+2] += (tz - pos[i3+2]) * 0.06;
+  }
+  geometry.attributes.position.needsUpdate = true;
+
+  if (rainbow) {
+    hue = (hue + 0.002) % 1;
+    baseColor.setHSL(hue, 1, 0.55);
+    applyColor();
+  }
+
+  explode *= 0.96;
+
+  if (handActive) {
+    points.rotation.y += (handCtrl.rotY - points.rotation.y) * 0.08;
+    points.rotation.x += (handCtrl.rotX - points.rotation.x) * 0.08;
+  } else if (!dragging) {
+    points.rotation.y += 0.003;
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+<script>
+// ===== HANDVERSE EXTRA SHAPES =====
+function rr(a, b) { return a + Math.random() * (b - a); }
+
+function build(parts) {
+  const out = new Float32Array(COUNT * 3);
+  let total = 0;
+  parts.forEach(p => total += p[0]);
+  let i = 0;
+  parts.forEach((p, pi) => {
+    const n = (pi === parts.length - 1) ? COUNT - i : Math.floor(COUNT * p[0] / total);
+    for (let k = 0; k < n && i < COUNT; k++, i++) {
+      const v = p[1]();
+      out[i*3] = v[0]; out[i*3+1] = v[1]; out[i*3+2] = v[2];
+    }
+  });
+  return out;
+}
+function tri(A, B, C, j) {
+  let a = Math.random(), b = Math.random();
+  if (a + b > 1) { a = 1 - a; b = 1 - b; }
+  j = j || 0.03;
+  return [
+    A[0] + a*(B[0]-A[0]) + b*(C[0]-A[0]) + rr(-j, j),
+    A[1] + a*(B[1]-A[1]) + b*(C[1]-A[1]) + rr(-j, j),
+    A[2] + a*(B[2]-A[2]) + b*(C[2]-A[2]) + rr(-j, j)
+  ];
+}
+function triSet(list, j) {
+  return () => { const t = list[Math.floor(Math.random() * list.length)]; return tri(t[0], t[1], t[2], j); };
+}
+function mirror(list, ax) {
+  return list.concat(list.map(t => t.map(p => { const q = p.slice(); q[ax] = -q[ax]; return q; })));
+}
+function line(A, B, j) {
+  const t = Math.random(); j = j || 0.05;
+  return [A[0]+t*(B[0]-A[0])+rr(-j,j), A[1]+t*(B[1]-A[1])+rr(-j,j), A[2]+t*(B[2]-A[2])+rr(-j,j)];
+}
+function ball(cx, cy, cz, r) {
+  const u = rr(-1, 1), t = rr(0, 6.2832), s = Math.sqrt(1 - u*u);
+  return [cx + r*s*Math.cos(t), cy + r*u, cz + r*s*Math.sin(t)];
+}
+function ellip(cx, cy, cz, a, b, c) {
+  const p = ball(0, 0, 0, 1);
+  return [cx + p[0]*a, cy + p[1]*b, cz + p[2]*c];
+}
+function box(cx, cy, cz, sx, sy, sz) {
+  const ax = sy*sz, ay = sx*sz, az = sx*sy, t = Math.random() * (ax + ay + az);
+  const p = [rr(-sx, sx), rr(-sy, sy), rr(-sz, sz)];
+  const s = Math.random() < 0.5 ? -1 : 1;
+  if (t < ax) p[0] = s * sx; else if (t < ax + ay) p[1] = s * sy; else p[2] = s * sz;
+  return [cx + p[0], cy + p[1], cz + p[2]];
+}
+function wheel(cx, cy, cz, Rr, r) {
+  const u = rr(0, 6.2832), v = rr(0, 6.2832);
+  return [cx + (Rr + r*Math.cos(v))*Math.cos(u), cy + (Rr + r*Math.cos(v))*Math.sin(u), cz + r*Math.sin(v)];
+}
+function rotY(p, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [p[0]*c + p[2]*s, p[1], -p[0]*s + p[2]*c];
+}
+function sgn() { return Math.random() < 0.5 ? -1 : 1; }
+
+const extraShapes = {
+  circle() {
+    return build([
+      [4, () => { const u = rr(0, 6.2832), v = rr(0, 6.2832), Rr = 2.4, r = 0.14;
+        return [(Rr + r*Math.cos(v))*Math.cos(u), (Rr + r*Math.cos(v))*Math.sin(u), r*Math.sin(v)]; }],
+      [1, () => { const a = rr(0, 6.2832), d = 2.3 * Math.sqrt(Math.random());
+        return [d*Math.cos(a), d*Math.sin(a), rr(-0.03, 0.03)]; }]
+    ]);
+  },
+  triangle() {
+    const A = [1.9,1.9,1.9], B = [1.9,-1.9,-1.9], C = [-1.9,1.9,-1.9], D = [-1.9,-1.9,1.9];
+    return build([[1, triSet([[A,B,C],[A,B,D],[A,C,D],[B,C,D]], 0.03)]]);
+  },
+  diamond() {
+    const T = [], G = [], list = [];
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      T.push([1.3*Math.cos(a), 1.3, 1.3*Math.sin(a)]);
+      G.push([2.3*Math.cos(a), 0.5, 2.3*Math.sin(a)]);
+    }
+    for (let i = 0; i < 8; i++) {
+      const j = (i + 1) % 8;
+      list.push([[0,1.3,0], T[i], T[j]]);
+      list.push([T[i], G[i], G[j]]);
+      list.push([T[i], T[j], G[j]]);
+      list.push([G[i], G[j], [0,-2.4,0]]);
+    }
+    return build([[1, triSet(list, 0.03)]]);
+  },
+  star() {
+    const V = [], list = [];
+    for (let i = 0; i < 10; i++) {
+      const a = Math.PI/2 + i * Math.PI/5, r = (i % 2) ? 1.0 : 2.5;
+      V.push([r*Math.cos(a), r*Math.sin(a), 0]);
+    }
+    for (let i = 0; i < 10; i++) list.push([[0,0,0], V[i], V[(i+1) % 10]]);
+    return build([[1, () => {
+      const t = list[Math.floor(Math.random() * list.length)];
+      const p = tri(t[0], t[1], t[2], 0.02); p[2] = rr(-0.3, 0.3); return p;
+    }]]);
+  },
+  house() {
+    const roof = mirror([
+      [[-1.8,0.4,1.5],[0,1.9,1.5],[0,1.9,-1.5]],
+      [[-1.8,0.4,1.5],[0,1.9,-1.5],[-1.8,0.4,-1.5]]
+    ], 0);
+    const gable = [[[-1.8,0.4,1.5],[1.8,0.4,1.5],[0,1.9,1.5]], [[-1.8,0.4,-1.5],[1.8,0.4,-1.5],[0,1.9,-1.5]]];
+    return build([
+      [4, () => box(0, -0.6, 0, 1.6, 1.0, 1.4)],
+      [3, triSet(roof, 0.03)],
+      [1, triSet(gable, 0.03)],
+      [1, () => box(0, -1.2, 1.45, 0.4, 0.8, 0.03)]
+    ]);
+  },
+  phone() {
+    return build([
+      [4, () => box(0, 0, 0, 1.0, 2.0, 0.1)],
+      [3, () => [rr(-0.88, 0.88), rr(-1.8, 1.7), 0.11]],
+      [0.3, () => ball(0, 1.82, 0.12, 0.08)]
+    ]);
+  },
+  airplane() {
+    const wings = mirror([
+      [[0.6,0,0.3],[-0.8,0,0.3],[-1.6,0.15,2.7]],
+      [[0.6,0,0.3],[-1.6,0.15,2.7],[-0.9,0.15,2.7]]
+    ], 2);
+    const tailW = mirror([
+      [[-1.8,0.05,0.2],[-2.5,0.05,0.2],[-2.7,0.05,1.0]],
+      [[-1.8,0.05,0.2],[-2.7,0.05,1.0],[-2.3,0.05,1.0]]
+    ], 2);
+    const fin = [[[-1.6,0.3,0],[-2.5,0.3,0],[-2.6,1.2,0]], [[-1.6,0.3,0],[-2.6,1.2,0],[-2.3,1.2,0]]];
+    return build([
+      [3, () => { const x = rr(-2.6, 2.6), r = 0.4*Math.sqrt(Math.max(0, 1 - Math.pow(x/2.6, 2))), a = rr(0, 6.2832);
+        return [x, r*Math.cos(a), r*Math.sin(a)]; }],
+      [4, triSet(wings, 0.03)],
+      [1, triSet(tailW, 0.03)],
+      [0.7, triSet(fin, 0.03)]
+    ]);
+  },
+  rocket() {
+    const fin = [[0.6,-0.2,0],[0.6,-1.7,0],[1.5,-2.1,0]];
+    return build([
+      [4, () => { const y = rr(-1.6, 1.2), a = rr(0, 6.2832); return [0.6*Math.cos(a), y, 0.6*Math.sin(a)]; }],
+      [3, () => { const y = rr(1.2, 2.7), r = 0.6*(2.7 - y)/1.5, a = rr(0, 6.2832); return [r*Math.cos(a), y, r*Math.sin(a)]; }],
+      [2, () => rotY(tri(fin[0], fin[1], fin[2], 0.03), Math.floor(Math.random()*3) * 2.0944)],
+      [0.5, () => { const a = rr(0, 6.2832); return [0.28*Math.cos(a), 0.4 + 0.28*Math.sin(a), 0.62]; }],
+      [1.5, () => { const y = rr(-3.4, -1.6), r = 0.4*(y + 3.4)/1.8*Math.sqrt(Math.random()), a = rr(0, 6.2832);
+        return [r*Math.cos(a), y, r*Math.sin(a)]; }]
+    ]);
+  },
+  car() {
+    return build([
+      [4, () => box(0, -0.1, 0, 2.3, 0.4, 0.95)],
+      [2, () => box(-0.2, 0.7, 0, 1.1, 0.4, 0.85)],
+      [3, () => wheel(sgn()*1.4, -0.5, sgn()*1.0, 0.4, 0.15)],
+      [0.3, () => ball(2.3, 0, sgn()*0.6, 0.12)]
+    ]);
+  },
+  bike() {
+    const R_ = [-1.4,-0.8,0], B = [-0.1,-0.8,0], S = [-0.6,0.5,0], H = [0.8,0.5,0], F = [1.4,-0.8,0];
+    const lines = [[R_,B],[R_,S],[B,S],[S,H],[B,H],[H,F],[[0.7,0.9,-0.5],[0.7,0.9,0.5]],[H,[0.7,0.9,0]],[S,[-0.65,0.75,0]]];
+    return build([
+      [3, () => wheel(sgn()*1.4, -0.8, 0, 0.8, 0.05)],
+      [1, () => { const a = rr(0, 6.2832), t = Math.random(); return [sgn()*1.4 + t*0.8*Math.cos(a), -0.8 + t*0.8*Math.sin(a), 0]; }],
+      [3, () => { const l = lines[Math.floor(Math.random()*lines.length)]; return line(l[0], l[1], 0.04); }]
+    ]);
+  },
+  butterfly() {
+    return build([
+      [8, () => {
+        const t = rr(0, Math.PI), r = Math.exp(Math.sin(t)) - 2*Math.cos(4*t);
+        const u = Math.sqrt(Math.random()), k = 0.65 * u;
+        const x = Math.abs(Math.sin(t) * r) * k, y = Math.cos(t) * r * k;
+        return [sgn() * x, y, x * 0.12 + rr(-0.04, 0.04)];
+      }],
+      [1, () => line([0,-1.4,0], [0,1.5,0], 0.07)]
+    ]);
+  },
+  eagle() {
+    const A = [0.4,0.8,0], B = [0.4,-0.7,0], C = [3.6,1.3,0.2], D = [3.4,-0.3,0.2], E = [2.6,-0.9,0.2];
+    const wings = mirror([[A,B,D],[A,D,C],[B,D,E]], 0);
+    return build([
+      [3, () => ellip(0, 0, 0, 0.5, 1.2, 0.4)],
+      [0.8, () => ball(0, 1.5, 0.1, 0.32)],
+      [0.3, () => { const t = Math.random(), r = 0.12*(1 - t), a = rr(0, 6.2832);
+        return [r*Math.cos(a), 1.45 + r*Math.sin(a) - 0.15*t, 0.3 + 0.4*t]; }],
+      [1, triSet([[[0,-1,0],[-0.6,-2.4,0],[0.6,-2.4,0]]], 0.04)],
+      [6, triSet(wings, 0.04)]
+    ]);
+  },
+  fish() {
+    return build([
+      [5, () => ellip(0, 0, 0, 1.9, 0.8, 0.4)],
+      [1.5, triSet([[[-1.7,0,0],[-2.9,1.0,0],[-2.9,-1.0,0]]], 0.03)],
+      [1, triSet([[[0.5,0.7,0],[-0.6,0.7,0],[-0.2,1.5,0]]], 0.03)],
+      [0.3, () => ball(1.3, 0.2, 0.35, 0.1)]
+    ]);
+  },
+  satellite() {
+    return build([
+      [3, () => box(0, 0, 0, 0.6, 0.6, 0.6)],
+      [4, () => box(sgn()*2.2, 0, 0, 1.2, 0.7, 0.04)],
+      [0.6, () => { const s = sgn(); return line([0.6*s,0,0], [1.0*s,0,0], 0.03); }],
+      [0.8, () => { const a = rr(0, 6.2832), r = 0.5*Math.sqrt(Math.random());
+        return [r*Math.cos(a), 0.95 + r*r*0.8, r*Math.sin(a)]; }],
+      [0.3, () => line([0,0.6,0], [0,0.95,0], 0.03)]
+    ]);
+  },
+  saturn() {
+    const c = Math.cos(0.45), s = Math.sin(0.45);
+    return build([
+      [2.5, () => ball(0, 0, 0, 1.3)],
+      [4, () => { const r = rr(1.9, 3.1), a = rr(0, 6.2832), x = r*Math.cos(a), y = rr(-0.02, 0.02), z = r*Math.sin(a);
+        return [x*c - y*s, x*s + y*c, z]; }]
+    ]);
+  },
+  comet() {
+    return build([
+      [2, () => ball(2.2, 0, 0, 0.6)],
+      [5, () => { const t = Math.pow(Math.random(), 1.3), r = (0.1 + 0.9*t) * Math.sqrt(Math.random()), a = rr(0, 6.2832);
+        return [2.2 - t*5.5, r*Math.cos(a), r*Math.sin(a)]; }]
+    ]);
+  },
+  asteroid() {
+    return build([[1, () => {
+      const p = ball(0, 0, 0, 1);
+      const b = 1 + 0.22*Math.sin(3*p[0] + 1)*Math.cos(4*p[1]) + 0.14*Math.sin(5*p[2] + 2) + 0.08*Math.sin(9*p[0]*p[1]);
+      return [p[0]*2.1*b, p[1]*1.5*b, p[2]*1.8*b];
+    }]]);
+  }
+};
+
+Object.assign(shapes, extraShapes);
+Object.keys(extraShapes).forEach(k => shapeNames.push(k));
+
+const LABELS = {
+  sphere:'⚪ Sphere', cube:'🧊 Cube', pyramid:'🔺 Pyramid', heart:'❤️ Heart', torus:'🍩 Torus', spiral:'🌀 Galaxy',
+  circle:'⭕ Circle', triangle:'△ Triangle', diamond:'💎 Diamond', star:'⭐ Star',
+  house:'🏠 House', phone:'📱 Phone',
+  airplane:'✈️ Airplane', rocket:'🚀 Rocket', car:'🚗 Car', bike:'🚲 Bike',
+  butterfly:'🦋 Butterfly', eagle:'🦅 Eagle', fish:'🐟 Fish',
+  satellite:'🛰️ Satellite', saturn:'🪐 Saturn', comet:'☄️ Comet', asteroid:'🪨 Asteroid'
+};
+
+// ----- rebuild the bottom bar as a scrolling row -----
+const barEl = document.getElementById('bar');
+barEl.innerHTML = '';
+Object.assign(barEl.style, { flexWrap: 'nowrap', overflowX: 'auto', justifyContent: 'flex-start', paddingBottom: '6px' });
+function mkBtn(text) {
+  const b = document.createElement('button');
+  b.className = 'btn'; b.textContent = text;
+  b.style.flex = '0 0 auto'; b.style.whiteSpace = 'nowrap';
+  barEl.appendChild(b);
+  return b;
+}
+shapeNames.forEach(n => {
+  const b = mkBtn(LABELS[n] || n);
+  b.dataset.shape = n;
+  b.addEventListener('click', () => setShape(n));
+});
+mkBtn('💥 Explode').addEventListener('click', () => { explode = 1; });
+mkBtn('🎯 Reset view').addEventListener('click', () => { camera.position.z = 7; });
+
+document.getElementById('handRow').style.bottom = '80px';
+document.getElementById('hint').textContent = 'Swipe your hand or scroll the buttons below ➜';
+setShape(shapeNames[currentShape]);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+// ===== HANDVERSE: 3D MODEL + IMAGE LOADER =====
+function showStatus(t) { statusEl.textContent = t; }
+
+function useTargets(arr) {
+  targets.set(arr);
+  document.querySelectorAll('[data-shape]').forEach(b => b.classList.remove('active'));
+  explode = 0.6;
+}
+
+// ---------- 3D MODEL (.glb) ----------
+function modelToTargets(root) {
+  root.updateMatrixWorld(true);
+  const tris = [];
+  root.traverse(o => {
+    if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position, idx = o.geometry.index;
+    const get = i => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+    const n = idx ? idx.count : pos.count;
+    for (let i = 0; i + 2 < n; i += 3) {
+      const a = idx ? idx.getX(i) : i, b = idx ? idx.getX(i+1) : i+1, c = idx ? idx.getX(i+2) : i+2;
+      tris.push([get(a), get(b), get(c)]);
+    }
+  });
+  if (!tris.length) throw new Error('No mesh found in this model');
+
+  const cum = new Float64Array(tris.length);
+  let total = 0;
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+  tris.forEach((t, i) => {
+    e1.subVectors(t[1], t[0]); e2.subVectors(t[2], t[0]);
+    total += e1.cross(e2).length() * 0.5;
+    cum[i] = total;
+  });
+
+  const pts = new Float32Array(COUNT * 3);
+  for (let i = 0; i < COUNT; i++) {
+    const r = Math.random() * total;
+    let lo = 0, hi = tris.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < r) lo = m + 1; else hi = m; }
+    const t = tris[lo];
+    let a = Math.random(), b = Math.random();
+    if (a + b > 1) { a = 1 - a; b = 1 - b; }
+    pts[i*3]   = t[0].x + a*(t[1].x - t[0].x) + b*(t[2].x - t[0].x);
+    pts[i*3+1] = t[0].y + a*(t[1].y - t[0].y) + b*(t[2].y - t[0].y);
+    pts[i*3+2] = t[0].z + a*(t[1].z - t[0].z) + b*(t[2].z - t[0].z);
+  }
+
+  // centre and scale to fit
+  let mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
+  for (let i = 0; i < COUNT; i++) for (let k = 0; k < 3; k++) {
+    mn[k] = Math.min(mn[k], pts[i*3+k]); mx[k] = Math.max(mx[k], pts[i*3+k]);
+  }
+  const size = Math.max(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]) || 1;
+  const sc = 5.2 / size;
+  for (let i = 0; i < COUNT; i++) for (let k = 0; k < 3; k++) {
+    pts[i*3+k] = (pts[i*3+k] - (mn[k] + mx[k]) / 2) * sc;
+  }
+  return pts;
+}
+
+const modelInput = document.createElement('input');
+modelInput.type = 'file'; modelInput.accept = '.glb,.gltf,model/gltf-binary';
+modelInput.style.display = 'none';
+document.body.appendChild(modelInput);
+
+modelInput.addEventListener('change', () => {
+  const f = modelInput.files[0];
+  if (!f) return;
+  showStatus('Loading 3D model...');
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const loader = new THREE.GLTFLoader();
+      loader.parse(reader.result, '', gltf => {
+        try {
+          useTargets(modelToTargets(gltf.scene));
+          showStatus('✅ Model loaded: ' + f.name);
+        } catch (e) { showStatus('❌ ' + e.message); }
+      }, err => showStatus('❌ Cannot read this model (try another .glb)'));
+    } catch (e) { showStatus('❌ ' + e.message); }
+  };
+  reader.readAsArrayBuffer(f);
+  modelInput.value = '';
+});
+
+// ---------- IMAGE ----------
+const imgInput = document.createElement('input');
+imgInput.type = 'file'; imgInput.accept = 'image/*';
+imgInput.style.display = 'none';
+document.body.appendChild(imgInput);
+
+imgInput.addEventListener('change', () => {
+  const f = imgInput.files[0];
+  if (!f) return;
+  showStatus('Loading image...');
+  const img = new Image();
+  img.onload = () => {
+    const W = 220, H = Math.max(10, Math.round(220 * img.height / img.width));
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0, W, H);
+    const d = g.getImageData(0, 0, W, H).data;
+    const px = (x, y) => { const i = (y*W + x) * 4; return [d[i], d[i+1], d[i+2], d[i+3]]; };
+    const corners = [px(1,1), px(W-2,1), px(1,H-2), px(W-2,H-2)];
+    const bg = [0,1,2].map(k => corners.reduce((s, p) => s + p[k], 0) / 4);
+    const keep = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = px(x, y);
+      if (p[3] < 128) continue;
+      const diff = Math.abs(p[0]-bg[0]) + Math.abs(p[1]-bg[1]) + Math.abs(p[2]-bg[2]);
+      if (diff > 60) keep.push([x, y, (p[0]+p[1]+p[2]) / 765]);
+    }
+    if (keep.length < 50) { showStatus('❌ Could not find a clear shape in this image'); return; }
+    const scale = 5 / Math.max(W, H);
+    const out = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const p = keep[Math.floor(Math.random() * keep.length)];
+      out[i*3]   = (p[0] - W/2 + Math.random()) * scale;
+      out[i*3+1] = -(p[1] - H/2 + Math.random()) * scale;
+      out[i*3+2] = (p[2] - 0.5) * 1.6 + (Math.random() - 0.5) * 0.2;
+    }
+    useTargets(out);
+    showStatus('✅ Image loaded');
+  };
+  img.onerror = () => showStatus('❌ Cannot open this image');
+  img.src = URL.createObjectURL(f);
+  imgInput.value = '';
+});
+
+// ---------- BUTTONS ----------
+const modelBtn = mkBtn('📦 3D model');
+modelBtn.addEventListener('click', () => modelInput.click());
+const imgBtn = mkBtn('🖼 Image');
+imgBtn.addEventListener('click', () => imgInput.click());
+barEl.insertBefore(imgBtn, barEl.firstChild);
+barEl.insertBefore(modelBtn, barEl.firstChild);
+</script>
+<script>
+// ===== HANDVERSE: PERMANENT SAVED DESIGNS =====
+(function () {
+  let db = null, replaying = false, deleteMode = false;
+
+  function openDB() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('handverse', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('items', { keyPath: 'id', autoIncrement: true });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  function getAll() {
+    return new Promise((res, rej) => {
+      const q = db.transaction('items').objectStore('items').getAll();
+      q.onsuccess = () => res(q.result);
+      q.onerror = () => rej(q.error);
+    });
+  }
+  function addItem(item) {
+    return new Promise((res, rej) => {
+      const q = db.transaction('items', 'readwrite').objectStore('items').add(item);
+      q.onsuccess = () => res(q.result);
+      q.onerror = () => rej(q.error);
+    });
+  }
+  function removeItem(id) {
+    return new Promise((res, rej) => {
+      const q = db.transaction('items', 'readwrite').objectStore('items').delete(id);
+      q.onsuccess = () => res();
+      q.onerror = () => rej(q.error);
+    });
+  }
+
+  // delete-mode button
+  const delBtn = mkBtn('🗑 Delete saved');
+  barEl.insertBefore(delBtn, imgBtn.nextSibling);
+  delBtn.addEventListener('click', () => {
+    deleteMode = !deleteMode;
+    delBtn.classList.toggle('active', deleteMode);
+    showStatus(deleteMode ? '🗑 Tap a ⭐ button to delete it' : 'Delete mode off');
+  });
+
+  function loadItem(item) {
+    const file = new File([item.file], item.file.name || item.name, { type: item.file.type });
+    const input = item.type === 'model' ? modelInput : imgInput;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    replaying = true;
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+    replaying = false;
+  }
+
+  function addSavedButton(item) {
+    const label = item.name.length > 14 ? item.name.slice(0, 14) + '…' : item.name;
+    const b = mkBtn('⭐ ' + label);
+    barEl.insertBefore(b, barEl.querySelector('[data-shape]'));
+    b.addEventListener('click', async () => {
+      if (deleteMode) {
+        if (confirm('Delete "' + item.name + '" permanently?')) {
+          await removeItem(item.id);
+          b.remove();
+          showStatus('Deleted ' + item.name);
+        }
+        return;
+      }
+      loadItem(item);
+    });
+  }
+
+  // runs BEFORE the normal loader, so it can grab the chosen file and save it
+  document.addEventListener('change', async e => {
+    if (replaying || !db) return;
+    const t = e.target;
+    if (t !== modelInput && t !== imgInput) return;
+    const f = t.files && t.files[0];
+    if (!f) return;
+    try {
+      const items = await getAll();
+      if (items.some(i => i.file.name === f.name && i.file.size === f.size)) return;
+      const nm = prompt('Name to save this as (example: Lion)', f.name.replace(/\.[^.]+$/, ''));
+      if (nm === null) return;
+      const item = { name: nm.trim() || f.name, type: t === modelInput ? 'model' : 'image', file: f };
+      item.id = await addItem(item);
+      addSavedButton(item);
+      showStatus('⭐ Saved permanently: ' + item.name);
+    } catch (err) {
+      showStatus('❌ Could not save: ' + err.message);
+    }
+  }, true);
+
+  // on startup: bring back everything saved earlier
+  openDB().then(async d => {
+    db = d;
+    (await getAll()).forEach(addSavedButton);
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  }).catch(err => showStatus('❌ Saving unavailable: ' + err.message));
+})();
+</script>
+  <script>
+// ===== HANDVERSE: PERMANENT SAVED DESIGNS =====
+(function () {
+  let db = null, replaying = false, deleteMode = false;
+
+  function openDB() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('handverse', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('items', { keyPath: 'id', autoIncrement: true });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  function getAll() {
+    return new Promise((res, rej) => {
+      const q = db.transaction('items').objectStore('items').getAll();
+      q.onsuccess = () => res(q.result);
+      q.onerror = () => rej(q.error);
+    });
+  }
+  function addItem(item) {
+    return new Promise((res, rej) => {
+      const q = db.transaction('items', 'readwrite').objectStore('items').add(item);
+      q.onsuccess = () => res(q.result);
+      q.onerror = () => rej(q.error);
+    });
+  }
+  function removeItem(id) {
+    return new Promise((res, rej) => {
+      const q = db.transaction('items', 'readwrite').objectStore('items').delete(id);
+      q.onsuccess = () => res();
+      q.onerror = () => rej(q.error);
+    });
+  }
+
+  const delBtn = mkBtn('🗑 Delete saved');
+  barEl.insertBefore(delBtn, imgBtn.nextSibling);
+  delBtn.addEventListener('click', () => {
+    deleteMode = !deleteMode;
+    delBtn.classList.toggle('active', deleteMode);
+    showStatus(deleteMode ? '🗑 Tap a ⭐ button to delete it' : 'Delete mode off');
+  });
+
+  function loadItem(item) {
+    const file = new File([item.file], item.file.name || item.name, { type: item.file.type });
+    const input = item.type === 'model' ? modelInput : imgInput;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    replaying = true;
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+    replaying = false;
+  }
+
+  function addSavedButton(item) {
+    const label = item.name.length > 14 ? item.name.slice(0, 14) + '…' : item.name;
+    const b = mkBtn('⭐ ' + label);
+    barEl.insertBefore(b, barEl.querySelector('[data-shape]'));
+    b.addEventListener('click', async () => {
+      if (deleteMode) {
+        if (confirm('Delete "' + item.name + '" permanently?')) {
+          await removeItem(item.id);
+          b.remove();
+          showStatus('Deleted ' + item.name);
+        }
+        return;
+      }
+      loadItem(item);
+    });
+  }
+
+  document.addEventListener('change', async e => {
+    if (replaying || !db) return;
+    const t = e.target;
+    if (t !== modelInput && t !== imgInput) return;
+    const f = t.files && t.files[0];
+    if (!f) return;
+    try {
+      const items = await getAll();
+      if (items.some(i => i.file.name === f.name && i.file.size === f.size)) return;
+      const nm = prompt('Name to save this as (example: Lion)', f.name.replace(/\.[^.]+$/, ''));
+      if (nm === null) return;
+      const item = { name: nm.trim() || f.name, type: t === modelInput ? 'model' : 'image', file: f };
+      item.id = await addItem(item);
+      addSavedButton(item);
+      showStatus('⭐ Saved permanently: ' + item.name);
+    } catch (err) {
+      showStatus('❌ Could not save: ' + err.message);
+    }
+  }, true);
+
+  openDB().then(async d => {
+    db = d;
+    (await getAll()).forEach(addSavedButton);
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  }).catch(err => showStatus('❌ Saving unavailable: ' + err.message));
+})();
+  </script>
+  <script>
+// ===== HANDVERSE: MODELS FROM GITHUB (WORK ON EVERY DEVICE) =====
+(function () {
+  const user = 'koreaangel17-gif', repo = 'handverse-ai';
+  fetch('https://api.github.com/repos/' + user + '/' + repo + '/contents/models')
+    .then(r => r.json())
+    .then(list => {
+      if (!Array.isArray(list)) return;
+      const first = barEl.querySelector('[data-shape]');
+      list.filter(f => /\.glb$/i.test(f.name)).forEach(f => {
+        const name = f.name.replace(/\.glb$/i, '');
+        const label = name.length > 14 ? name.slice(0, 14) + '…' : name;
+        const b = mkBtn('🌍 ' + label);
+        barEl.insertBefore(b, first);
+        b.addEventListener('click', async () => {
+          showStatus('Loading ' + name + '...');
+          try {
+            const res = await fetch('models/' + encodeURIComponent(f.name));
+            const buf = await res.arrayBuffer();
+            new THREE.GLTFLoader().parse(buf, '', gltf => {
+              try {
+                useTargets(modelToTargets(gltf.scene));
+                showStatus('✅ ' + name);
+              } catch (e) { showStatus('❌ ' + e.message); }
+            }, () => showStatus('❌ Cannot read ' + f.name));
+          } catch (e) { showStatus('❌ Could not load ' + f.name); }
+        });
+      });
+    })
+    .catch(() => {});
+})();
+  </script>
+  <script>
+// ===== HANDVERSE: HIGHLIGHT THE SELECTED MODEL =====
+(function () {
+  const isModelBtn = b => /^(🌍|⭐)/.test(b.textContent.trim());
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const txt = b.textContent;
+    if (txt.includes('Explode') || txt.includes('Reset view') || txt.includes('Delete saved')) return;
+
+    const deleting = Array.from(barEl.querySelectorAll('button'))
+      .some(x => x.textContent.includes('Delete saved') && x.classList.contains('active'));
+    if (deleting) return;
+
+    // clear the old highlight from all model buttons
+    barEl.querySelectorAll('button').forEach(x => { if (isModelBtn(x)) x.classList.remove('active'); });
+
+    if (isModelBtn(b)) {
+      // highlight this model, un-highlight the plain shapes
+      barEl.querySelectorAll('[data-shape]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    }
+  });
+})();
+  </script>
+  <script>
+// ===== HANDVERSE: SELECTED LABEL + STRONG HIGHLIGHT =====
+(function () {
+  const hint = document.getElementById('hint');
+  const isModel = b => { const t = b.textContent.trim(); return t.startsWith('🌍') || t.startsWith('⭐'); };
+
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const txt = b.textContent.trim();
+    if (txt.includes('Explode') || txt.includes('Reset view') || txt.includes('Delete saved') ||
+        txt.includes('3D model') || txt.includes('Image')) return;
+
+    // remove the strong highlight from every model button
+    barEl.querySelectorAll('button').forEach(x => {
+      if (isModel(x)) {
+        x.style.background = ''; x.style.color = '';
+        x.style.boxShadow = ''; x.style.border = '';
+      }
+    });
+
+    if (isModel(b)) {
+      barEl.querySelectorAll('[data-shape]').forEach(x => x.classList.remove('active'));
+      b.style.background = '#1e90ff';
+      b.style.color = '#00112b';
+      b.style.boxShadow = '0 0 18px #1e90ff';
+      b.style.border = '2px solid #ffffff';
+    }
+    hint.textContent = '✅ Selected: ' + txt;
+    hint.style.color = '#ffffff';
+  });
+})();
+  </script>
+  <script>
+// ===== HANDVERSE: SWIPE CYCLES THROUGH SHAPES + YOUR MODELS =====
+(function () {
+  let inHands = false, curBtn = null;
+  const isItem = b => { const t = b.textContent.trim(); return b.dataset.shape || t.startsWith('🌍') || t.startsWith('⭐'); };
+  const items = () => Array.from(barEl.querySelectorAll('button')).filter(isItem);
+
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b && isItem(b)) curBtn = b;
+  });
+
+  const origSet = setShape;
+  setShape = function (name) {
+    if (!inHands) return origSet(name);
+    // this call came from a hand swipe: work out the direction
+    const len = shapeNames.length;
+    const dir = (((shapeNames.indexOf(name) - currentShape) % len) + len) % len === 1 ? 1 : -1;
+    inHands = false;
+    const list = items();
+    if (!list.length) return origSet(name);
+    let i = list.indexOf(curBtn);
+    if (i < 0) i = list.findIndex(x => x.dataset.shape === shapeNames[currentShape]);
+    const next = list[(i + dir + list.length) % list.length];
+    next.click();
+    next.scrollIntoView({ inline: 'center', block: 'nearest' });
+  };
+
+  const origHands = onHands;
+  onHands = function (results) {
+    inHands = true;
+    try { origHands(results); } finally { inHands = false; }
+  };
+})();
+  </script>
+  <script>
+// ===== HANDVERSE: HAND SWIPE SWITCHES BETWEEN YOUR MODELS =====
+(function () {
+  const isModel = b => { const t = b.textContent.trim(); return t.startsWith('🌍') || t.startsWith('⭐'); };
+  const isShape = b => !!b.dataset.shape;
+  let cur = null, lastX = null, lastT = 0, lastSwipe = 0, block = false;
+
+  barEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b && (isModel(b) || isShape(b))) cur = b;
+  });
+
+  // stop the old swipe from jumping to built-in shapes
+  const origSet = setShape;
+  setShape = function (n) { if (block) return; return origSet(n); };
+
+  const origHands = onHands;
+  onHands = function (results) {
+    block = true;
+    try { origHands(results); } finally { block = false; }
+
+    if (!results.multiHandLandmarks || !results.multiHandLandmarks.length) { lastX = null; return; }
+    const lm = results.multiHandLandmarks[0];
+    const now = performance.now();
+    const px = 1 - lm[9].x;
+    const open = fingerStates(lm).filter(Boolean).length >= 3;
+
+    if (lastX !== null) {
+      const dt = (now - lastT) / 1000;
+      const vx = (px - lastX) / dt;
+      if (open && dt < 0.4 && Math.abs(vx) > 1.1 && now - lastSwipe > 900) {
+        const all = Array.from(barEl.querySelectorAll('button'));
+        const models = all.filter(isModel), shapesB = all.filter(isShape);
+        const list = (cur && isModel(cur) && models.length > 1) ? models : (models.length && !cur ? models : shapesB);
+        let i = list.indexOf(cur);
+        if (i < 0) i = 0;
+        const dir = vx > 0 ? 1 : -1;
+        const next = list[(i + dir + list.length) % list.length];
+        lastSwipe = now;
+        next.click();
+        next.scrollIntoView({ inline: 'center', block: 'nearest' });
+        statusEl.textContent = '👉 ' + next.textContent.trim();
+      }
+    }
+    lastX = px; lastT = now;
+  };
+})();
+  </script>
+  <button id="delModels" style="position:fixed;bottom:12px;left:12px;z-index:9999;padding:10px 14px;border:0;border-radius:10px;background:#e53935;color:#fff;font-size:14px">🗑 Delete my phone models</button>
+<script>
+document.getElementById('delModels').onclick = async () => {
+  if (!confirm('Delete all models saved on this phone? Shared models will stay.')) return;
+  try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+  try {
+    const dbs = await indexedDB.databases();
+    dbs.forEach(d => indexedDB.deleteDatabase(d.name));
+  } catch (e) {}
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+  } catch (e) {}
+  alert('Done. Reloading...');
+  location.reload();
+}; 
+</script> 
+  <script>
+(function () {
+  // remove the red buttons
+  function killRed() {
+    document.querySelectorAll('button').forEach(function (b) {
+      if (b.textContent.indexOf('Delete my phone models') > -1) b.remove();
+    });
+  }
+  killRed();
+  setTimeout(killRed, 500);
+  window.addEventListener('load', killRed);
+
+  // credit line (only one)
+  var old = document.getElementById('credit2');
+  if (old) old.remove();
+  var c = document.createElement('div');
+  c.id = 'credit2';
+  c.textContent = 'Made by Nessan dhimal';
+  c.style.cssText = 'position:fixed;top:0;left:0;right:0;text-align:center;z-index:2147483647;pointer-events:none;font:600 10px/1 sans-serif;letter-spacing:1px;color:#fff;text-shadow:0 0 3px #000';
+  document.body.appendChild(c);
+})();
+  </script>
+<script>
+(function () {
+  // 1. Keep removing the red "Delete my phone models" buttons
+  function killRed() {
+    document.querySelectorAll('button').forEach(function (b) {
+      if ((b.textContent || '').indexOf('Delete my phone models') > -1) b.remove();
+    });
+  }
+  killRed();
+  new MutationObserver(killRed).observe(document.body, { childList: true, subtree: true });
+
+  // 2. Remove any old credit lines
+  ['credit', 'credit2', 'credit3'].forEach(function (id) {
+    var o = document.getElementById(id);
+    if (o) o.remove();
+  });
+
+  // 3. Add one credit line under the "Swipe your hand..." text
+  var c = document.createElement('div');
+  c.id = 'credit3';
+  c.textContent = 'Made by Nessan dhimal';
+  c.style.cssText = 'text-align:center;font:600 12px sans-serif;letter-spacing:1px;color:#fff;text-shadow:0 0 3px #000;margin:2px 0 4px;pointer-events:none';
+
+  var target = null;
+  document.querySelectorAll('div,p,span,small').forEach(function (el) {
+    if (!target && el.children.length === 0 && (el.textContent || '').indexOf('Swipe your hand') === 0) target = el;
+  });
+  if (target && target.parentNode) {
+    target.parentNode.insertBefore(c, target.nextSibling);
+  } else {
+    c.style.cssText += ';position:fixed;bottom:4px;left:0;right:0;z-index:99999';
+    document.body.appendChild(c);
+  }
+})();
+</script>
+<script>
+// ===== HANDVERSE UPGRADES: two-hand mode, trails, color flow, music pulse, stars, DNA =====
+(function () {
+  const $ = id => document.getElementById(id);
+
+  // ---------- DNA helix shape + button ----------
+  shapes.dna = function () {
+    const o = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      let x, y, z;
+      if (Math.random() < 0.78) {
+        const s = Math.random() < 0.5 ? 0 : Math.PI;
+        y = rnd(-3, 3); const a = y * 2.2 + s;
+        x = 1.1 * Math.cos(a) + rnd(-.08, .08); z = 1.1 * Math.sin(a) + rnd(-.08, .08); y += rnd(-.08, .08);
+      } else {
+        y = Math.round(rnd(-3, 3) * 5) / 5; const a = y * 2.2, f = Math.random();
+        x = 1.1 * Math.cos(a) * (1 - 2 * f); z = 1.1 * Math.sin(a) * (1 - 2 * f);
+      }
+      o[i*3] = x; o[i*3+1] = y; o[i*3+2] = z;
+    }
+    return o;
+  };
+  shapeNames.push('dna'); LABELS.dna = '🧬 DNA';
+  const dnaBtn = mkBtn('🧬 DNA'); dnaBtn.dataset.shape = 'dna';
+  dnaBtn.addEventListener('click', () => setShape('dna'));
+  const exBtn = Array.from(barEl.querySelectorAll('button')).find(x => x.textContent.includes('Explode'));
+  if (exBtn) barEl.insertBefore(dnaBtn, exBtn);
+
+  // ---------- effects buttons ----------
+  const fx = document.createElement('div');
+  fx.style.cssText = 'position:fixed;left:8px;right:8px;bottom:158px;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;z-index:5';
+  fx.innerHTML = '<button class="btn" id="flowBtn">🌊 Color Flow</button><button class="btn" id="musicBtn">🎵 Music Pulse</button><button class="btn active" id="starBtn">🌌 Stars</button>';
+  document.body.appendChild(fx);
+  fx.querySelectorAll('.btn').forEach(b => { b.style.padding = '7px 11px'; b.style.fontSize = '12px'; });
+
+  // ---------- starfield ----------
+  const SN = 1500, sp = new Float32Array(SN * 3);
+  for (let i = 0; i < SN; i++) {
+    const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u*u), R = 25 + Math.random() * 20;
+    sp[i*3] = R * s * Math.cos(t); sp[i*3+1] = R * u; sp[i*3+2] = R * s * Math.sin(t);
+  }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+  const stars = new THREE.Points(sg, new THREE.PointsMaterial({ size: .5, map: material.map, color: 0x6f8fff, transparent: true, opacity: .7, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(stars);
+  $('starBtn').onclick = function () { stars.visible = !stars.visible; this.classList.toggle('active', stars.visible); };
+
+  // ---------- trails ----------
+  let trails = true;
+  const fadeScene = new THREE.Scene(), fadeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  fadeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0x000510, transparent: true, opacity: .18, depthTest: false })));
+  renderer.autoClear = false;
+  const origRender = renderer.render.bind(renderer);
+  renderer.render = function (s, c) {
+    if (s === scene) { if (trails) { origRender(fadeScene, fadeCam); renderer.clearDepth(); } else renderer.clear(); }
+    return origRender(s, c);
+  };
+  
+
+  // ---------- colour flow ----------
+  let flow = false;
+  geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(COUNT * 3).fill(1), 3));
+  const pal = []; for (let i = 0; i < 256; i++) { const c = new THREE.Color().setHSL(i / 256, 1, .55); pal.push([c.r, c.g, c.b]); }
+  $('flowBtn').onclick = function () {
+    flow = !flow; this.classList.toggle('active', flow);
+    material.vertexColors = flow; material.needsUpdate = true; applyColor();
+  };
+
+  // ---------- music pulse ----------
+  let music = false, analyser = null, fdata = null, level = 0, peak = 30;
+  $('musicBtn').onclick = async function () {
+    if (music) { music = false; this.classList.remove('active'); level = 0; points.scale.setScalar(1); material.size = +$('glow').value; return; }
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = ac.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = .5; if (ac.state === 'suspended') ac.resume();
+      ac.createMediaStreamSource(st).connect(analyser);
+      fdata = new Uint8Array(analyser.frequencyBinCount); music = true; this.classList.add('active');
+    } catch (e) { statusEl.textContent = '❌ Mic problem: ' + (e.name || e.message); }
+  };
+
+  // ---------- two-hand mode ----------
+  let twoMode = false, lastPX = null, lastT = 0, lastSwipe = 0, lastClose = 0, tilt = 0, curBtn = null;
+  barEl.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.shape) curBtn = b; });
+  const isItem = b => { const t = b.textContent.trim(); return b.dataset.shape || t.startsWith('🌍') || t.startsWith('⭐'); };
+  function swipeNext(dir) {
+    const list = Array.from(barEl.querySelectorAll('button')).filter(isItem);
+    if (!list.length) return;
+    let i = list.indexOf(curBtn); if (i < 0) i = 0;
+    const nx = list[(i + dir + list.length) % list.length];
+    curBtn = nx; nx.click(); nx.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+  function twoHand(h1, h2) {
+    const now = performance.now();
+    handActive = true; lastSeen = now;
+    let A = h1, B = h2, pa = 1 - h1[9].x, pb = 1 - h2[9].x;
+    if (pa > pb) { A = h2; B = h1; const t = pa; pa = pb; pb = t; }   // A = left on screen
+    const ay = A[9].y, by = B[9].y, d = Math.hypot(pa - pb, ay - by);
+    handCtrl.rotY = (pa - .5) * 5; handCtrl.rotX = (ay - .5) * 3;
+    tilt = Math.atan2(B[0].y - A[0].y, (1 - B[0].x) - (1 - A[0].x)) * .6;
+    const openB = fingerStates(B).filter(Boolean).length;
+    handCtrl.scaleTarget = Math.max(.3, Math.min(2.2, d * 2.6)) * (openB >= 4 ? 1.15 : openB <= 1 ? .7 : 1);
+    handCtrl.openTarget = openB >= 4 ? 1 : 0;
+    if (rainbow) setRainbow(false);
+    baseColor.setHSL(1 - Math.max(0, Math.min(1, by)), 1, .55); applyColor();
+    let g = '🙌 Two hands: apart/together = size, right hand height = colour';
+    if (d < .12 && now - lastClose > 1200) { explode = 1; lastClose = now; g = '💥 Hands close: burst'; }
+    if (lastPX !== null && lastT) {
+      const vx = (pa - lastPX) / ((now - lastT) / 1000);
+      if (fingerStates(A).filter(Boolean).length >= 3 && Math.abs(vx) > 1.4 && now - lastSwipe > 900) {
+        swipeNext(vx > 0 ? 1 : -1); lastSwipe = now; g = '👉 Left hand swipe: new shape';
+      }
+    }
+    lastPX = pa; lastT = now; statusEl.textContent = g;
+  }
+  const prevHands = onHands;
+  onHands = function (r) {
+    const L = r.multiHandLandmarks;
+    if (L && L.length >= 2) { twoMode = true; twoHand(L[0], L[1]); return; }
+    if (twoMode) { twoMode = false; lastPX = null; handCtrl.scaleTarget = 1; handCtrl.openTarget = 0; }
+    prevHands(r);
+  };
+
+  // ---------- per-frame loop (runs after the main one) ----------
+  let frame = 0, time = 0;
+  (function loop() {
+    requestAnimationFrame(loop); frame++; time += .016;
+    stars.rotation.y += .0004; stars.rotation.x += .0001;
+    points.rotation.z += ((twoMode ? tilt : 0) - points.rotation.z) * .08;
+    if (music && analyser) {
+      analyser.getByteFrequencyData(fdata);
+      let s = 0; for (let i = 0; i < 40; i++) s += fdata[i];
+      const a = s / 40;
+      peak = Math.max(peak * .996, a, 8);
+      const target = Math.max(0, (a / peak - .35) / .65);
+      level += (target - level) * .45;
+      points.scale.setScalar(1 + level * .6);
+      material.size = (+$('glow').value) * (1 + level * 2);
+      if (frame % 20 == 0) statusEl.textContent = '🎵 Listening... ' + '▮'.repeat(Math.round(level * 10));
+    }
+    if (flow) {
+      const b = +$('bright').value; material.color.setRGB(b, b, b);
+      if (frame % 2 == 0) {
+        const pos = geometry.attributes.position.array, ca = geometry.attributes.color.array;
+        for (let i = 0; i < COUNT; i++) {
+          const k = i * 3, h = pos[k+1] * .16 + pos[k] * .05 + time * .12;
+          const c = pal[(((h % 1) + 1) % 1 * 256) | 0];
+          ca[k] = c[0]; ca[k+1] = c[1]; ca[k+2] = c[2];
+        }
+        geometry.attributes.color.needsUpdate = true;
+      }
+    }
+  })();
+})();
+</script>
+
+<script>
+// ===== HANDVERSE OWNER-ONLY: HIDDEN RECORD BUTTON + INTRO =====
+(function () {
+  const SECRET = 'nessan-7391';          // change this word to your own secret
+  try {
+    const q = new URLSearchParams(location.search).get('owner');
+    if (q === SECRET) localStorage.setItem('hv_owner', '1');
+    if (q === 'off') localStorage.removeItem('hv_owner');
+  } catch (e) {}
+  let owner = false;
+  try { owner = localStorage.getItem('hv_owner') === '1'; } catch (e) {}
+  if (!owner) return;                      // everyone else sees nothing
+
+  // ----- intro (only on your phone) -----
+  const intro = document.createElement('div');
+  intro.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#000510;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 1s;pointer-events:none';
+  intro.innerHTML = '<div id="hvI1" style="color:#3db8ff;font:bold 30px Arial;letter-spacing:10px;text-shadow:0 0 20px #09f;opacity:0;transform:scale(.6);transition:all 1.6s">HANDVERSE AI</div>' +
+    '<div id="hvI2" style="color:#9fd6ff;font:13px Arial;letter-spacing:3px;margin-top:14px;opacity:0;transition:opacity 1.2s">Made by Nessan dhimal</div>';
+  document.body.appendChild(intro);
+  setTimeout(() => {
+    document.getElementById('hvI1').style.opacity = 1;
+    document.getElementById('hvI1').style.transform = 'scale(1)';
+  }, 100);
+  setTimeout(() => { document.getElementById('hvI2').style.opacity = 1; }, 1200);
+  setTimeout(() => { intro.style.opacity = 0; }, 3000);
+  setTimeout(() => intro.remove(), 4100);
+
+  // ----- record button (only on your phone) -----
+  const btn = document.createElement('button');
+  btn.className = 'btn'; btn.textContent = '⏺ Rec';
+  btn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:9999;padding:6px 10px;font-size:12px';
+  document.body.appendChild(btn);
+  let rec = null, chunks = [];
+  btn.onclick = () => {
+    if (rec && rec.state === 'recording') { rec.stop(); return; }
+    try {
+      const stream = renderer.domElement.captureStream(30);
+      const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+      const mt = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+      rec = new MediaRecorder(stream, mt ? { mimeType: mt, videoBitsPerSecond: 6e6 } : {});
+      chunks = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        const blob = new Blob(chunks, { type: rec.mimeType || 'video/webm' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'handverse-' + Date.now() + (blob.type.includes('mp4') ? '.mp4' : '.webm');
+        document.body.appendChild(a); a.click(); a.remove();
+        btn.textContent = '⏺ Rec'; btn.classList.remove('active');
+        statusEl.textContent = '✅ Video saved';
+      };
+      rec.start(); btn.textContent = '⏹ Stop'; btn.classList.add('active');
+      statusEl.textContent = '🔴 Recording...';
+    } catch (e) { statusEl.textContent = '❌ Cannot record on this browser: ' + (e.name || e.message); }
+  };
+})();
+</script>
+
+</body>
+</html>
