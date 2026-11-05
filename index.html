@@ -1373,5 +1373,106 @@ document.getElementById('delModels').onclick = async () => {
   }
 })();
 </script>
+<script>
+// ===== HANDVERSE UPGRADES =====
+(function () {
+  const $ = id => document.getElementById(id);
+
+  // DNA shape + button
+  shapes.dna = function () {
+    const o = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      let x, y, z;
+      if (Math.random() < 0.78) {
+        const s = Math.random() < 0.5 ? 0 : Math.PI;
+        y = rnd(-3, 3); const a = y * 2.2 + s;
+        x = 1.1 * Math.cos(a) + rnd(-.08, .08); z = 1.1 * Math.sin(a) + rnd(-.08, .08); y += rnd(-.08, .08);
+      } else {
+        y = Math.round(rnd(-3, 3) * 5) / 5; const a = y * 2.2, f = Math.random();
+        x = 1.1 * Math.cos(a) * (1 - 2 * f); z = 1.1 * Math.sin(a) * (1 - 2 * f);
+      }
+      o[i*3] = x; o[i*3+1] = y; o[i*3+2] = z;
+    }
+    return o;
+  };
+  shapeNames.push('dna'); LABELS.dna = '🧬 DNA';
+  const dnaBtn = mkBtn('🧬 DNA'); dnaBtn.dataset.shape = 'dna';
+  dnaBtn.addEventListener('click', () => setShape('dna'));
+  const exBtn = Array.from(barEl.querySelectorAll('button')).find(x => x.textContent.includes('Explode'));
+  if (exBtn) barEl.insertBefore(dnaBtn, exBtn);
+
+  // effect buttons
+  const fx = document.createElement('div');
+  fx.style.cssText = 'position:fixed;left:8px;right:8px;bottom:158px;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;z-index:5';
+  fx.innerHTML = '<button class="btn" id="flowBtn">🌊 Color Flow</button><button class="btn" id="musicBtn">🎵 Music Pulse</button><button class="btn active" id="starBtn">🌌 Stars</button>';
+  document.body.appendChild(fx);
+  fx.querySelectorAll('.btn').forEach(b => { b.style.padding = '7px 11px'; b.style.fontSize = '12px'; });
+
+  // stars
+  const SN = 1500, sp = new Float32Array(SN * 3);
+  for (let i = 0; i < SN; i++) {
+    const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u*u), R = 25 + Math.random() * 20;
+    sp[i*3] = R * s * Math.cos(t); sp[i*3+1] = R * u; sp[i*3+2] = R * s * Math.sin(t);
+  }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+  const stars = new THREE.Points(sg, new THREE.PointsMaterial({ size: .5, map: material.map, color: 0x6f8fff, transparent: true, opacity: .7, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(stars);
+  $('starBtn').onclick = function () { stars.visible = !stars.visible; this.classList.toggle('active', stars.visible); };
+
+  // trails (always on)
+  const fadeScene = new THREE.Scene(), fadeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  fadeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0x000510, transparent: true, opacity: .18, depthTest: false })));
+  renderer.autoClear = false;
+  const origRender = renderer.render.bind(renderer);
+  renderer.render = function (s, c) {
+    if (s === scene) { origRender(fadeScene, fadeCam); renderer.clearDepth(); }
+    return origRender(s, c);
+  };
+
+  // colour flow
+  let flow = false;
+  geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(COUNT * 3).fill(1), 3));
+  const pal = []; for (let i = 0; i < 256; i++) { const c = new THREE.Color().setHSL(i / 256, 1, .55); pal.push([c.r, c.g, c.b]); }
+  $('flowBtn').onclick = function () {
+    flow = !flow; this.classList.toggle('active', flow);
+    material.vertexColors = flow; material.needsUpdate = true; applyColor();
+  };
+
+  // music pulse
+  let music = false, analyser = null, fdata = null, level = 0;
+  $('musicBtn').onclick = async function () {
+    if (music) { music = false; this.classList.remove('active'); level = 0; points.scale.setScalar(1); material.size = +$('glow').value; return; }
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = ac.createAnalyser(); analyser.fftSize = 256;
+      ac.createMediaStreamSource(st).connect(analyser);
+      fdata = new Uint8Array(analyser.frequencyBinCount); music = true; this.classList.add('active');
+    } catch (e) { statusEl.textContent = '❌ Mic problem: ' + (e.name || e.message); }
+  };
+
+  // two-hand mode
+  let twoMode = false, lastPX = null, lastT = 0, lastSwipe = 0, lastClose = 0, tilt = 0, curBtn = null;
+  barEl.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.shape) curBtn = b; });
+  const isItem = b => { const t = b.textContent.trim(); return b.dataset.shape || t.startsWith('🌍') || t.startsWith('⭐'); };
+  function swipeNext(dir) {
+    const list = Array.from(barEl.querySelectorAll('button')).filter(isItem);
+    if (!list.length) return;
+    let i = list.indexOf(curBtn); if (i < 0) i = 0;
+    const nx = list[(i + dir + list.length) % list.length];
+    curBtn = nx; nx.click(); nx.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+  function twoHand(h1, h2) {
+    const now = performance.now();
+    handActive = true; lastSeen = now;
+    let A = h1, B = h2, pa = 1 - h1[9].x, pb = 1 - h2[9].x;
+    if (pa > pb) { A = h2; B = h1; const t = pa; pa = pb; pb = t; }
+    const ay = A[9].y, by = B[9].y, d = Math.hypot(pa - pb, ay - by);
+    handCtrl.rotY = (pa - .5) * 5; handCtrl.rotX = (ay - .5) * 3;
+    tilt = Math.atan2(B[0].y - A[0].y, (1 - B[0].x) - (1 - A[0].x)) * .6;
+    const openB = fingerStates(B).filter(Boolean).length;
+    handCtrl.scaleTarget = Math.max(.3, Math.min(2.2, d * 2.6)) * (openB >= 4 ? 1.15 : openB <= 1 ? .7 : 1);
+    handCtrl.openTarget = openB >= 4 ? 1 : 0;
+    if (rainbow)
 </body>
 </html>
